@@ -18,6 +18,144 @@ applications that are useful across the fleet, while old XFCE, Snap, and
 machine-specific migration leftovers were intentionally left out. KDE Plasma
 is the desktop for every host.
 
+## Installation from a NixOS installer
+
+These steps assume a UEFI x86_64 NixOS installer and a backup of all data on
+the target machine. **Partitioning and formatting are destructive. Verify the
+disk with `lsblk` before running any storage command.**
+
+### 1. Boot and prepare the installer
+
+Boot the installer in UEFI mode, open a terminal, become root, enable time
+synchronization, and connect to the network:
+
+```sh
+sudo -i
+timedatectl set-ntp true
+nmcli device status
+# For Wi-Fi, use the KDE network menu or:
+nmcli device wifi list
+nmcli device wifi connect '<SSID>' --ask
+```
+
+Clone this repository somewhere available from the mounted target. HTTPS is
+used here so an SSH key is not required in the installer:
+
+```sh
+git clone https://github.com/tetraphoz/iindesa-fleet.git /mnt/etc/nixos/fleet
+cd /mnt/etc/nixos/fleet
+```
+
+### 2. Choose the storage procedure
+
+- **P50:** the inventory already describes the encrypted Btrfs layout used by
+  `hosts/p50/configuration.nix`. Back up the data, unlock the existing LUKS
+  container, and mount its existing subvolumes. Do not format it unless a
+  clean reinstall is intended.
+- **T440s:** the inventory describes the old LUKS/LVM/ext4 installation. To
+  use `.#t440s`, back up the machine and recreate its root partition as
+  encrypted Btrfs. The existing EFI and `/boot` partitions may be retained.
+- **X1 Carbon 9th Gen:** partition the new disk with an EFI system partition
+  and an encrypted Linux root partition. The root filesystem must be Btrfs.
+  Do not assume the disk is `/dev/nvme0n1`; confirm it with `lsblk`.
+
+For a new encrypted Btrfs root, after creating the partitions, the essential
+formatting and subvolume steps are:
+
+```sh
+# Replace /dev/ROOT_PARTITION only after checking lsblk.
+cryptsetup luksFormat --label NIXOS-LUKS /dev/ROOT_PARTITION
+cryptsetup open /dev/ROOT_PARTITION cryptroot
+mkfs.btrfs -L NIXOS /dev/mapper/cryptroot
+
+mount /dev/mapper/cryptroot /mnt
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@home
+btrfs subvolume create /mnt/@log
+umount /mnt
+
+mount -o subvol=@,compress=zstd /dev/mapper/cryptroot /mnt
+mkdir -p /mnt/home /mnt/var/log /mnt/boot /mnt/boot/efi
+mount -o subvol=@home,compress=zstd /dev/mapper/cryptroot /mnt/home
+mount -o subvol=@log,compress=zstd /dev/mapper/cryptroot /mnt/var/log
+```
+
+Mount the EFI and `/boot` partitions according to the host layout. For the
+existing T440s layout, the inventory recorded these UUIDs:
+
+```sh
+mount /dev/disk/by-uuid/690e4316-3896-4aa2-bb73-71293835d21e /mnt/boot
+mount /dev/disk/by-uuid/07D4-D0F1 /mnt/boot/efi
+```
+
+For the X1, use the actual EFI partition identified with `lsblk` instead. The
+P50 uses `/boot` UUID `43BE-1091` and its existing Btrfs subvolumes, so mount
+those rather than running the formatting commands above:
+
+```sh
+cryptsetup open /dev/disk/by-uuid/eb8d2902-ae92-4fc8-9aef-578656f5431b luksdev
+mount -o subvol=@,compress=zstd /dev/mapper/luksdev /mnt
+mkdir -p /mnt/home /mnt/var/log /mnt/boot
+mount -o subvol=@home,compress=zstd /dev/mapper/luksdev /mnt/home
+mount -o subvol=@log,compress=zstd /dev/mapper/luksdev /mnt/var/log
+mount /dev/disk/by-uuid/43BE-1091 /mnt/boot
+```
+
+### 3. Generate hardware configuration
+
+The X1 has no inventory yet. After its filesystems are mounted, generate and
+review its hardware file:
+
+```sh
+nixos-generate-config --root /mnt
+cp /mnt/etc/nixos/hardware-configuration.nix \
+  /mnt/etc/nixos/fleet/hosts/x1-9thgen/hardware-configuration.nix
+```
+
+The generated file contains the real UUIDs and replaces the label-based X1
+placeholder. For P50 and T440s, review the host modules against the mounted
+layout; their disk information came from the existing inventories.
+
+### 4. Install the selected host
+
+Run the installer using the host name that matches the machine:
+
+```sh
+nixos-install --root /mnt --flake /mnt/etc/nixos/fleet#p50
+# or:
+nixos-install --root /mnt --flake /mnt/etc/nixos/fleet#t440s
+# or:
+nixos-install --root /mnt --flake /mnt/etc/nixos/fleet#x1-9thgen
+```
+
+Set the requested root password. The normal fleet account is created by the
+configuration, but no user password is stored in Git. After the first boot,
+log in through the local console and set it:
+
+```sh
+passwd iindesa   # P50 or X1
+passwd rocio     # T440s
+```
+
+Then remove the installer media and reboot:
+
+```sh
+reboot
+```
+
+### 5. First boot checks
+
+Confirm that KDE, networking, audio, and the encrypted mounts are working:
+
+```sh
+systemctl --failed
+findmnt -t btrfs,vfat
+nmcli device status
+```
+
+Connect Wi-Fi interactively if needed. Future configuration updates can be
+installed with `nixos-rebuild switch` from a checked-out copy of this repo.
+
 ## Build or deploy
 
 ```sh
