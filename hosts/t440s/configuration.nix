@@ -3,8 +3,10 @@
 {
   networking.hostName = "t440s";
 
-  # The T440s currently has a separate EFI system partition and /boot
-  # partition, so retain GRUB rather than changing the existing layout.
+  # Keep the existing EFI and /boot partitions, but replace the old
+  # LUKS/LVM/ext4 root with an encrypted Btrfs filesystem.  The labels below
+  # are intentional placeholders for the new layout; see README.md before
+  # provisioning this host.
   boot.loader.grub = {
     enable = true;
     device = "nodev";
@@ -19,15 +21,24 @@
     "sd_mod"
     "sdhci_pci"
   ];
-  boot.initrd.kernelModules = [ "dm_mod" "dm_crypt" "dm_snapshot" ];
-  boot.initrd.luks.devices."sda3_crypt" = {
-    device = "/dev/disk/by-uuid/ff519df2-33cb-4b7f-ba2f-0b05340682d1";
+  boot.initrd.luks.devices."cryptroot" = {
+    device = "/dev/disk/by-label/NIXOS-LUKS";
   };
 
   fileSystems."/" = {
-    device = "/dev/mapper/xubuntu--vg-root";
-    fsType = "ext4";
-    options = [ "errors=remount-ro" ];
+    device = "/dev/disk/by-label/NIXOS";
+    fsType = "btrfs";
+    options = [ "subvol=@" "compress=zstd" "ssd" ];
+  };
+  fileSystems."/home" = {
+    device = "/dev/disk/by-label/NIXOS";
+    fsType = "btrfs";
+    options = [ "subvol=@home" "compress=zstd" "ssd" ];
+  };
+  fileSystems."/var/log" = {
+    device = "/dev/disk/by-label/NIXOS";
+    fsType = "btrfs";
+    options = [ "subvol=@log" "compress=zstd" "ssd" ];
   };
   fileSystems."/boot" = {
     device = "/dev/disk/by-uuid/690e4316-3896-4aa2-bb73-71293835d21e";
@@ -38,9 +49,6 @@
     fsType = "vfat";
     options = [ "umask=0077" ];
   };
-  swapDevices = [
-    { device = "/dev/mapper/xubuntu--vg-swap_1"; }
-  ];
 
   # The inventory reports Intel Haswell integrated graphics.  The kernel's
   # modesetting driver is preferred over the obsolete xf86-video-intel driver.
