@@ -1,0 +1,11 @@
+# Nix build output and local state
+result
+result-*
+.direnv/
+.envrc
+
+# Local secrets and generated machine data
+secrets/
+*.key
+*.pem
+*.age
