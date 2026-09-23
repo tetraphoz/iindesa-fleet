@@ -41,7 +41,8 @@
       } ''
         for script in \
           ${./nixos-inventory.sh} \
-          ${./scripts/install-x1.sh}; do
+          ${./scripts/install-x1.sh} \
+          ${./scripts/update-x1.sh}; do
           bash -n "$script"
           shellcheck "$script"
         done

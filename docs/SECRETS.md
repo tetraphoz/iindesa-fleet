@@ -95,13 +95,21 @@ automatically. Manual P50 and T440s provisioning can use
 `scripts/configure-btrfs-hibernation.sh`, which runs
 `btrfs inspect-internal map-swapfile -r` and updates the host configuration.
 
-For an off-machine backup, add a restic repository and an encrypted password
-file before enabling a backup job. A future host or common module can then use
-an arrangement like:
+### TODO: cloud restic backups
+
+Restic is installed, but off-machine backups are intentionally not enabled yet.
+The preferred implementation is a cloud or S3-compatible repository, with the
+repository credentials and restic password supplied through agenix. Decide on
+the provider, bucket/endpoint, region, retention policy, and expected monthly
+cost before enabling it.
+
+A future host or common module can use an arrangement like this. Replace the
+SFTP repository with the selected cloud backend and add the provider's
+credential environment through an agenix-managed `environmentFile` if needed:
 
 ```nix
 services.restic.backups.fleet = {
-  repository = "sftp:backup.example:/srv/restic/fleet";
+  repository = "s3:https://s3.example.com/fleet-backups";
   passwordFile = config.age.secrets.restic-password.path;
   paths = [ "/home/${primaryUser}" ];
   exclude = [
@@ -115,6 +123,7 @@ services.restic.backups.fleet = {
 };
 ```
 
-Do not enable that example until the repository, SSH authentication, retention
-policy, and restore procedure have been tested. A backup is only useful once a
-restore has been verified.
+Do not enable the example until the repository, credentials, retention policy,
+bandwidth behavior, and restore procedure have been tested. A backup is only
+useful once a restore has been verified. Keep this as a deployment TODO while
+fleet management and the cloud provider are being evaluated.
