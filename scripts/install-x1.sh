@@ -7,6 +7,12 @@
 
 set -Eeuo pipefail
 
+# Some NixOS installer images have flakes and the new Nix CLI disabled by
+# default. Keep the installer workflow self-contained without modifying the
+# installer's persistent configuration.
+NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}experimental-features = nix-command flakes"
+export NIX_CONFIG
+
 usage() {
     cat <<'EOF'
 Usage: install-x1.sh --disk DEVICE [--repo DIRECTORY] [--target DIRECTORY] [--yes]

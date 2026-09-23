@@ -78,6 +78,15 @@ passes, it pauses so you can review or edit that file before installation. It
 automatically unmounts the target and closes the LUKS mapping when it finishes.
 Read the manual steps below before running it; the operation is destructive.
 `--yes` skips all typed confirmations only for deliberate, non-interactive use.
+The script temporarily enables the `nix-command` and `flakes` experimental
+features, which are disabled by default on some installer images.
+
+If performing the manual procedure and the installer reports that
+`nix-command` or `flakes` is disabled, run this before the Nix commands:
+
+```sh
+export NIX_CONFIG='experimental-features = nix-command flakes'
+```
 
 ## 3. Identify the internal disk
 

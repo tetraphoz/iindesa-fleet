@@ -36,6 +36,10 @@
 
   system.stateVersion = "25.05";
 
+  # Keep flake-based rebuilds available on the installed systems. The X1
+  # installer also enables these features temporarily in the live environment.
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
   time.timeZone = "America/Monterrey";
   i18n.defaultLocale = "es_MX.UTF-8";
   i18n.extraLocaleSettings = {
