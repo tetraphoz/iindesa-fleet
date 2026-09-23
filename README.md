@@ -32,8 +32,9 @@ is the desktop for every host.
 - `hosts/<name>/` — host-specific boot, hardware, graphics, and filesystem settings.
 - `nixos-inventory.sh` — read-only migration inventory collector for existing Linux systems.
 - `scripts/install-x1.sh` — guarded, destructive X1 Carbon provisioning helper.
-- `SECRETS.md` — agenix, Syncthing, snapshot, and off-machine backup guidance.
-- `remote.md` — Tailscale, SSH, and remote NixOS deployment instructions.
+- `docs/X1-INSTALL.md` — guarded X1 installation procedure.
+- `docs/SECRETS.md` — agenix, Syncthing, snapshot, and off-machine backup guidance.
+- `docs/remote.md` — Tailscale, SSH, and remote NixOS deployment instructions.
 - `inventories/` — migration inputs and generated archives. Newly generated
   inventory directories are ignored by Git; add an archive explicitly only
   after reviewing it before sharing.
@@ -110,7 +111,7 @@ cd /etc/nixos/fleet
 ```
 
 For a fresh X1 Carbon installation, the guarded automated procedure is
-available in [X1-INSTALL.md](X1-INSTALL.md):
+available in [docs/X1-INSTALL.md](docs/X1-INSTALL.md):
 
 ```sh
 ./scripts/install-x1.sh --disk /dev/nvme0n1
@@ -319,7 +320,7 @@ partitioning it.
 
 `hosts/x1-9thgen/hardware-configuration.nix` is deliberately a label-based
 bootstrap template, not an invented hardware scan. The recommended path is the
-[X1 installation procedure](X1-INSTALL.md), which partitions and mounts the
+[X1 installation procedure](docs/X1-INSTALL.md), which partitions and mounts the
 selected disk, generates the real hardware file, checks the flake, and installs
 the host. Boot an installer, partition and mount the machine manually only if
 you are not using that helper, then generate the real file:
@@ -344,7 +345,7 @@ must remain outside Git. Agenix is included for encrypted secrets, Syncthing
 is provisioned automatically for the primary user, and Snapper provides local
 Btrfs snapshots for `/` and `/home`.
 
-Read [SECRETS.md](SECRETS.md) for the age identity workflow, Syncthing
+Read [docs/SECRETS.md](docs/SECRETS.md) for the age identity workflow, Syncthing
 bootstrap notes, and the planned restic off-machine backup configuration.
 Snapshots are not a substitute for backups because they remain on the same
 disk.
