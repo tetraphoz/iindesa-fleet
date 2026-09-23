@@ -64,6 +64,30 @@
   networking.firewall.enable = true;
   networking.firewall.allowedTCPPorts = [ ];
   networking.firewall.allowedUDPPorts = [ ];
+  # Remote administration is available only through the private Tailscale
+  # interface, never through the normal LAN/Wi-Fi interfaces.
+  networking.firewall.interfaces."tailscale0".allowedTCPPorts = [ 22 ];
+
+  services.tailscale.enable = true;
+
+  # Password authentication is limited to the encrypted private network for
+  # accessible initial administration. Move to SSH keys and set this to false
+  # after the admin host has been enrolled.
+  services.openssh = {
+    enable = true;
+    settings = {
+      PermitRootLogin = "no";
+      PasswordAuthentication = true;
+      KbdInteractiveAuthentication = true;
+    };
+    generateHostKeys = true;
+    hostKeys = [
+      {
+        type = "ed25519";
+        path = "/etc/ssh/ssh_host_ed25519_key";
+      }
+    ];
+  };
 
   # KDE Plasma, using SDDM.  No XFCE packages or services are pulled in.
   services.xserver.enable = true;
@@ -303,17 +327,4 @@
     NIXOS_OZONE_WL = "1";
   };
 
-  # Generate a unique host identity on first boot without exposing an SSH
-  # server by default. The public host key can later be used for host
-  # verification or as an agenix recipient.
-  services.openssh = {
-    enable = false;
-    generateHostKeys = true;
-    hostKeys = [
-      {
-        type = "ed25519";
-        path = "/etc/ssh/ssh_host_ed25519_key";
-      }
-    ];
-  };
 }
