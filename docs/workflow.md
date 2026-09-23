@@ -13,6 +13,39 @@ fleet hosts
   do not need GitHub credentials
 ```
 
+## First-host bootstrap without SSH
+
+If a host was installed before remote management was enabled, no SSH copy is
+needed. The installer already placed the generated hardware file in the local
+checkout at `/etc/nixos/fleet`.
+
+From the host's local console, preserve that generated file, update the
+checkout, restore the file, and activate the new configuration:
+
+```sh
+cd /etc/nixos/fleet
+cp hosts/x1-9thgen/hardware-configuration.nix /tmp/x1-hardware-configuration.nix
+git restore hosts/x1-9thgen/hardware-configuration.nix
+git pull --ff-only origin main
+cp /tmp/x1-hardware-configuration.nix \
+  hosts/x1-9thgen/hardware-configuration.nix
+sudo nixos-rebuild switch --flake /etc/nixos/fleet#x1-9thgen
+```
+
+Use the matching host name for the P50 or T440s. If the repository's GitHub
+remote requires SSH credentials, inspect it with `git remote -v` and use the
+HTTPS repository URL for this one-time pull, or transfer the updated checkout
+with a USB drive. Do not use `git reset --hard` because it could erase the
+machine-specific hardware file.
+
+After the rebuild, enroll the host in Tailscale:
+
+```sh
+sudo tailscale up
+```
+
+Once it is enrolled, remote SSH and deployment can be used normally.
+
 ## Hardware configuration generated on a host
 
 The X1 installer stores its generated hardware configuration in:
