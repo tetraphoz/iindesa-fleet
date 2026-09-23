@@ -219,7 +219,10 @@ if ((ASSUME_YES == 0)); then
     read -r
 fi
 
-nixos-install --root "$TARGET" --flake "${REPO_DIR}#x1-9thgen"
+# Keep the root account locked; the wheel member iindesa can administer the
+# machine with sudo. This avoids asking for a separate root password.
+nixos-install --root "$TARGET" --no-root-password \
+    --flake "${REPO_DIR}#x1-9thgen"
 
 # Keep the checkout in the installed system for future nixos-rebuild commands.
 mkdir -p "$TARGET/etc/nixos"
@@ -227,6 +230,7 @@ rm -rf -- "$TARGET/etc/nixos/fleet"
 cp -a -- "$REPO_DIR" "$TARGET/etc/nixos/fleet"
 
 printf '\nSet the password for the iindesa user before rebooting.\n'
+printf 'This is the only installed-system login password; iindesa uses sudo for administration.\n'
 nixos-enter --root "$TARGET" -c 'passwd iindesa'
 
 sync

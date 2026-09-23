@@ -71,9 +71,11 @@ cd /etc/nixos/fleet
 ```
 
 Replace `/dev/nvme0n1` with the whole internal disk identified by `lsblk`.
-The script asks for the root password during `nixos-install`, then prompts for
-the `iindesa` password and copies the checkout into the installed system at
-`/etc/nixos/fleet`. After the hardware file is generated and the flake check
+The script keeps the root account locked, prompts once for the `iindesa`
+password, and gives that user administrative access through `sudo`. You may
+use the same passphrase for LUKS and the `iindesa` login if that is more
+accessible for the intended users. It copies the checkout into the installed
+system at `/etc/nixos/fleet`. After the hardware file is generated and the flake check
 passes, it pauses so you can review or edit that file before installation. It
 automatically unmounts the target and closes the LUKS mapping when it finishes.
 Read the manual steps below before running it; the operation is destructive.
@@ -314,12 +316,12 @@ Install the X1 configuration using the repository at `/etc/nixos/fleet`:
 ```sh
 nixos-install \
   --root /mnt \
+  --no-root-password \
   --flake /etc/nixos/fleet#x1-9thgen
 ```
 
-Set the root password when prompted.
-
-The configuration creates the normal user `iindesa`, but no user password is stored in Git. Set it before rebooting:
+The root account remains locked. The configuration creates the normal user
+`iindesa` in the `wheel` group; set its password before rebooting:
 
 ```sh
 nixos-enter --root /mnt -c 'passwd iindesa'

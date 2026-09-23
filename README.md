@@ -239,19 +239,22 @@ layout; their disk information came from the existing inventories.
 Run the installer using the host name that matches the machine:
 
 ```sh
-nixos-install --root /mnt --flake /etc/nixos/fleet#p50
+nixos-install --root /mnt --no-root-password \
+  --flake /etc/nixos/fleet#p50
 # or:
-nixos-install --root /mnt --flake /etc/nixos/fleet#t440s
+nixos-install --root /mnt --no-root-password \
+  --flake /etc/nixos/fleet#t440s
 # or:
-nixos-install --root /mnt --flake /etc/nixos/fleet#x1-9thgen
+nixos-install --root /mnt --no-root-password \
+  --flake /etc/nixos/fleet#x1-9thgen
 ```
 
-Set the requested root password. The normal fleet account is created by the
-configuration, but no user password is stored in Git. After the first boot,
-log in through the local console and set it:
+The root account remains locked. The normal fleet account is created in the
+`wheel` group, and no user password is stored in Git. Set its password before
+rebooting:
 
 ```sh
-passwd iindesa   # all hosts
+nixos-enter --root /mnt -c 'passwd iindesa'
 ```
 
 Then remove the installer media and reboot:

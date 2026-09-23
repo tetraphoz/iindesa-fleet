@@ -56,6 +56,7 @@
   console.keyMap = "us";
 
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages;
+  boot.plymouth.enable = true;
   hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
 
