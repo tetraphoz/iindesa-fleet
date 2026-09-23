@@ -33,6 +33,7 @@ is the desktop for every host.
 - `nixos-inventory.sh` — read-only migration inventory collector for existing Linux systems.
 - `scripts/install-x1.sh` — guarded, destructive X1 Carbon provisioning helper.
 - `SECRETS.md` — agenix, Syncthing, snapshot, and off-machine backup guidance.
+- `remote.md` — Tailscale, SSH, and remote NixOS deployment instructions.
 - `inventories/` — migration inputs and generated archives. Newly generated
   inventory directories are ignored by Git; add an archive explicitly only
   after reviewing it before sharing.
