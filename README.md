@@ -38,13 +38,24 @@ nmcli device wifi list
 nmcli device wifi connect '<SSID>' --ask
 ```
 
-Clone this repository somewhere available from the mounted target. HTTPS is
-used here so an SSH key is not required in the installer:
+Clone this repository in the installer environment, outside `/mnt`. HTTPS
+is used here so an SSH key is not required in the installer:
 
 ```sh
-git clone https://github.com/tetraphoz/iindesa-fleet.git /mnt/etc/nixos/fleet
-cd /mnt/etc/nixos/fleet
+git clone https://github.com/tetraphoz/iindesa-fleet.git /etc/nixos/fleet
+cd /etc/nixos/fleet
 ```
+
+For a fresh X1 Carbon installation, the guarded automated procedure is
+available in [X1-INSTALL.md](X1-INSTALL.md):
+
+```sh
+./scripts/install-x1.sh --disk /dev/nvme0n1
+```
+
+Replace the disk with the whole internal device identified by `lsblk`. The
+script is destructive, displays the selected disk, and requires an explicit
+confirmation before partitioning it.
 
 ### 2. Choose the storage procedure
 
@@ -109,7 +120,7 @@ review its hardware file:
 ```sh
 nixos-generate-config --root /mnt
 cp /mnt/etc/nixos/hardware-configuration.nix \
-  /mnt/etc/nixos/fleet/hosts/x1-9thgen/hardware-configuration.nix
+  /etc/nixos/fleet/hosts/x1-9thgen/hardware-configuration.nix
 ```
 
 The generated file contains the real UUIDs and replaces the label-based X1
@@ -121,11 +132,11 @@ layout; their disk information came from the existing inventories.
 Run the installer using the host name that matches the machine:
 
 ```sh
-nixos-install --root /mnt --flake /mnt/etc/nixos/fleet#p50
+nixos-install --root /mnt --flake /etc/nixos/fleet#p50
 # or:
-nixos-install --root /mnt --flake /mnt/etc/nixos/fleet#t440s
+nixos-install --root /mnt --flake /etc/nixos/fleet#t440s
 # or:
-nixos-install --root /mnt --flake /mnt/etc/nixos/fleet#x1-9thgen
+nixos-install --root /mnt --flake /etc/nixos/fleet#x1-9thgen
 ```
 
 Set the requested root password. The normal fleet account is created by the

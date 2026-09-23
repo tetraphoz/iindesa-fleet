@@ -54,6 +54,30 @@ If the repository is already available on another disk or USB drive, copy it ins
 cp -a /path/to/iindesa-fleet /etc/nixos/fleet
 ```
 
+Keep the checkout outside `/mnt`: the script mounts `/mnt` over the target
+filesystem, and a checkout below `/mnt` would be hidden while the install is
+running.
+
+## Automated installation
+
+For a fresh X1 installation, the repository includes a guarded script that
+performs the partitioning, formatting, mounts, hardware scan, flake check, and
+NixOS installation described below. It prints the disk layout and requires a
+typed confirmation before erasing anything:
+
+```sh
+cd /etc/nixos/fleet
+./scripts/install-x1.sh --disk /dev/nvme0n1
+```
+
+Replace `/dev/nvme0n1` with the whole internal disk identified by `lsblk`.
+The script asks for the root password during `nixos-install`, then prompts for
+the `iindesa` password and copies the checkout into the installed system at
+`/etc/nixos/fleet`. It automatically unmounts the target and closes the LUKS
+mapping when it finishes. Read the manual steps below before running it; the
+operation is destructive. `--yes` skips the confirmation only for deliberate,
+non-interactive use.
+
 ## 3. Identify the internal disk
 
 List all disks and partitions:
