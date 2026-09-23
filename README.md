@@ -35,6 +35,7 @@ is the desktop for every host.
 - `docs/X1-INSTALL.md` — guarded X1 installation procedure.
 - `docs/SECRETS.md` — agenix, Syncthing, snapshot, and off-machine backup guidance.
 - `docs/remote.md` — Tailscale, SSH, and remote NixOS deployment instructions.
+- `docs/workflow.md` — hardware, package, Git, and remote deployment workflow.
 - `inventories/` — migration inputs and generated archives. Newly generated
   inventory directories are ignored by Git; add an archive explicitly only
   after reviewing it before sharing.
