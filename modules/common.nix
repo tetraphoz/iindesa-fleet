@@ -214,6 +214,26 @@
     '';
   };
 
+  # The @sync subvolume is mounted after the regular home filesystem, so set
+  # its top-level ownership after all local filesystems are available.  This
+  # makes the mount itself writable by the account that runs Syncthing on
+  # every host, rather than only changing the mountpoint hidden underneath it.
+  systemd.services.shared-directory-permissions = {
+    description = "Set ownership of the shared data directory";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "local-fs.target" ];
+    before = [ "syncthing.service" ];
+    path = [ pkgs.coreutils ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      install -d -m 0750 -o ${primaryUser} -g users \
+        /home/${primaryUser}/Shared
+    '';
+  };
+
   systemd.tmpfiles.rules = [
     "d /home/${primaryUser}/Shared/Desktop 0750 ${primaryUser} users -"
     "d /home/${primaryUser}/Shared/Documents 0750 ${primaryUser} users -"
