@@ -3,6 +3,8 @@
 Last updated: 2026-09-22
 
 This file tracks active work and decisions for the `iindesa-fleet` repository.
+The longer-term cloud and infrastructure work sequence is in
+[`docs/INFRASTRUCTURE-ROADMAP.md`](docs/INFRASTRUCTURE-ROADMAP.md).
 Do not put passwords, private keys, cloud credentials, age identities, or other
 secrets here.
 

@@ -1,16 +1,7 @@
-{ lib, ... }:
+{ ... }:
 
 {
   networking.hostName = "p50";
-
-  # Keep unfree evaluation limited to the proprietary driver required by this
-  # host's Quadro M1000M.
-  nixpkgs.config.allowUnfreePredicate = pkg:
-    builtins.elem (lib.getName pkg) [
-      "nvidia-x11"
-      "nvidia-kernel-modules"
-      "nvidia-settings"
-    ];
 
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;

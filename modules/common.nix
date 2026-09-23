@@ -40,6 +40,12 @@
   # installer also enables these features temporarily in the live environment.
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
+  # The fleet baseline includes packages whose licenses are not free according
+  # to the Nixpkgs license metadata (for example, Chromium codecs and firmware
+  # tools). Allow those packages on every host rather than requiring a
+  # host-specific exception.
+  nixpkgs.config.allowUnfree = true;
+
   time.timeZone = "America/Monterrey";
   i18n.defaultLocale = "es_MX.UTF-8";
   i18n.extraLocaleSettings = {
