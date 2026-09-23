@@ -17,7 +17,7 @@ Options:
   --disk DEVICE       Whole internal disk, for example /dev/nvme0n1 (required)
   --repo DIRECTORY    Fleet checkout (default: repository containing this script)
   --target DIRECTORY  Temporary install mount point (default: /mnt)
-  --yes               Skip the typed confirmation (still requires --disk)
+  --yes               Skip typed confirmations (still requires --disk)
   -h, --help          Show this help
 EOF
 }
@@ -106,7 +106,7 @@ esac
 
 for command in \
     awk btrfs cryptsetup find mount mountpoint mkfs.btrfs mkfs.fat \
-    findmnt less nix nixos-enter nixos-generate-config nixos-install parted \
+    findmnt nix nixos-enter nixos-generate-config nixos-install parted \
     partprobe readlink umount udevadm; do
     command -v "$command" >/dev/null 2>&1 \
         || die "required command is not available: $command"
@@ -162,14 +162,24 @@ mount /dev/mapper/cryptroot "$TARGET"
 btrfs subvolume create "$TARGET/@"
 btrfs subvolume create "$TARGET/@home"
 btrfs subvolume create "$TARGET/@log"
+btrfs subvolume create "$TARGET/@sync"
+btrfs subvolume create "$TARGET/@swap"
 umount "$TARGET"
 
 mount -o subvol=@,compress=zstd,ssd /dev/mapper/cryptroot "$TARGET"
 mkdir -p "$TARGET/home" "$TARGET/var/log" "$TARGET/boot"
 mount -o subvol=@home,compress=zstd,ssd /dev/mapper/cryptroot "$TARGET/home"
 mount -o subvol=@log,compress=zstd,ssd /dev/mapper/cryptroot "$TARGET/var/log"
+mkdir -p "$TARGET/home/iindesa/Shared" "$TARGET/swap"
+mount -o subvol=@sync,compress=zstd,ssd /dev/mapper/cryptroot "$TARGET/home/iindesa/Shared"
+mount -o subvol=@swap,compress=zstd,ssd /dev/mapper/cryptroot "$TARGET/swap"
+btrfs filesystem mkswapfile --size 32768M --uuid clear "$TARGET/swap/swapfile"
+RESUME_OFFSET="$(btrfs inspect-internal map-swapfile -r "$TARGET/swap/swapfile")"
+[[ "$RESUME_OFFSET" =~ ^[0-9]+$ ]] \
+    || die "could not determine the Btrfs hibernation resume offset"
 mount "$EFI_PART" "$TARGET/boot"
 
+printf '\nCreated 32 GiB encrypted swapfile with resume offset: %s\n' "$RESUME_OFFSET"
 printf '\nMounted target filesystem:\n'
 findmnt -R "$TARGET"
 
@@ -178,13 +188,30 @@ nixos-generate-config --root "$TARGET" --dir "$GENERATED_DIR"
 cp -- "$GENERATED_DIR/hardware-configuration.nix" \
     "$REPO_DIR/hosts/x1-9thgen/hardware-configuration.nix"
 
+HARDWARE_FILE="$REPO_DIR/hosts/x1-9thgen/hardware-configuration.nix"
+sed -i '$d' "$HARDWARE_FILE"
+cat >> "$HARDWARE_FILE" <<EOF
+
+  # The swapfile was created during installation; this offset is specific to
+  # this filesystem and is required for hibernation resume.
+  boot.resumeDevice = "/dev/disk/by-label/NIXOS";
+  boot.kernelParams = [ "resume_offset=$RESUME_OFFSET" ];
+}
+EOF
+
 printf '\nGenerated hardware configuration:\n'
-less "$REPO_DIR/hosts/x1-9thgen/hardware-configuration.nix"
+cat "$REPO_DIR/hosts/x1-9thgen/hardware-configuration.nix"
 
 (
     cd -- "$REPO_DIR"
     nix flake check --no-write-lock-file
 )
+
+if ((ASSUME_YES == 0)); then
+    printf '\nReview the generated hardware file above and in the repository.\n'
+    printf 'Open another terminal to edit it if needed, then press Enter to install: '
+    read -r
+fi
 
 nixos-install --root "$TARGET" --flake "${REPO_DIR}#x1-9thgen"
 

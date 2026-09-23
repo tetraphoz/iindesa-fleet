@@ -3,10 +3,10 @@
 {
   networking.hostName = "t440s";
 
-  # Keep the existing EFI and /boot partitions, but replace the old
-  # LUKS/LVM/ext4 root with an encrypted Btrfs filesystem.  The labels below
-  # are intentional placeholders for the new layout; see README.md before
-  # provisioning this host.
+  # Keep the existing EFI and /boot partitions, but replace the current
+  # LUKS/LVM/ext4 root with the required encrypted Btrfs filesystem.  The
+  # labels below are intentional placeholders for the new layout; see
+  # README.md before provisioning this host.
   boot.loader.grub = {
     enable = true;
     device = "nodev";
@@ -40,6 +40,17 @@
     fsType = "btrfs";
     options = [ "subvol=@log" "compress=zstd" "ssd" ];
   };
+  fileSystems."/home/iindesa/Shared" = {
+    device = "/dev/disk/by-label/NIXOS";
+    fsType = "btrfs";
+    options = [ "subvol=@sync" "compress=zstd" "ssd" ];
+  };
+  fileSystems."/swap" = {
+    device = "/dev/disk/by-label/NIXOS";
+    fsType = "btrfs";
+    options = [ "subvol=@swap" "compress=zstd" "ssd" ];
+  };
+  boot.resumeDevice = "/dev/disk/by-label/NIXOS";
   fileSystems."/boot" = {
     device = "/dev/disk/by-uuid/690e4316-3896-4aa2-bb73-71293835d21e";
     fsType = "ext4";

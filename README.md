@@ -7,7 +7,14 @@ hardware-specific host modules for:
 - `t440s`: Lenovo ThinkPad T440s, encrypted Btrfs root, Intel graphics
 - `x1-9thgen`: new ThinkPad X1 Carbon 9th Gen, awaiting its hardware scan
 
-All three hosts use Btrfs with `@`, `@home`, and `@log` subvolumes. The P50
+All three host configurations use an encrypted root by default: each defines
+an initrd LUKS device before mounting its Btrfs root. The EFI system partition
+(and the T440s `/boot` partition) remain unencrypted as required for boot.
+All target roots use Btrfs with `@`, `@home`, `@log`, `@sync`, and `@swap`
+subvolumes. The shared `@sync` subvolume is mounted at
+`/home/<primary-user>/Shared` for Syncthing's Desktop and Documents folders.
+The encrypted `@swap` subvolume contains a persistent swapfile for hibernation.
+The P50
 already has that layout. The T440s inventory still describes its old
 LUKS/LVM/ext4 installation, so it must be backed up and reprovisioned before
 switching to this configuration.
@@ -17,6 +24,61 @@ copied wholesale: the common module contains the workstation tools and KDE
 applications that are useful across the fleet, while old XFCE, Snap, and
 machine-specific migration leftovers were intentionally left out. KDE Plasma
 is the desktop for every host.
+
+## Repository layout
+
+- `flake.nix` and `flake.lock` — pinned NixOS inputs and the three host outputs.
+- `modules/common.nix` — shared KDE Plasma workstation configuration.
+- `hosts/<name>/` — host-specific boot, hardware, graphics, and filesystem settings.
+- `nixos-inventory.sh` — read-only migration inventory collector for existing Linux systems.
+- `scripts/install-x1.sh` — guarded, destructive X1 Carbon provisioning helper.
+- `SECRETS.md` — agenix, Syncthing, snapshot, and off-machine backup guidance.
+- `inventories/` — migration inputs and generated archives. Newly generated
+  inventory directories are ignored by Git; add an archive explicitly only
+  after reviewing it before sharing.
+
+## Package policy
+
+`modules/common.nix` contains the cross-host workstation baseline derived from
+both the P50 and T440s inventories. In addition to KDE applications and
+compiler tooling, it includes the storage tools needed by this fleet
+(`btrfs-progs`, `cryptsetup`, filesystem utilities, and `efibootmgr`), laptop
+and hardware diagnostics, network troubleshooting tools, and common transfer
+utilities such as `rsync`.
+
+The old package lists are not copied wholesale. Legacy XFCE applications,
+Snap packages, stale migration dependencies, and specialized applications
+should only be added after confirming that they belong on every host. Hardware-
+specific software, such as the P50 NVIDIA driver, stays in that host's module.
+
+## Collecting a migration inventory
+
+The inventory script records hardware, storage, networking, packages, services,
+users, and relevant configuration references from the current Linux machine. It
+supports Debian/Ubuntu, Arch, Fedora/RHEL, openSUSE, and Alpine systems. It does
+not create a NixOS configuration and it intentionally avoids copying common
+secret files.
+
+Run it as root for the most complete result, preferably from the repository
+checkout:
+
+```sh
+# Use the short hostname and write to ./inventories by default.
+sudo ./nixos-inventory.sh
+
+# Explicit host and output directory (the positional form is also supported).
+sudo ./nixos-inventory.sh x1-9thgen inventories
+
+# Equivalent long-option form.
+sudo ./nixos-inventory.sh --host x1-9thgen --output inventories
+```
+
+The command creates `inventories/<host>/` and, when `tar` is available,
+`inventories/<host>.tar.gz`. Existing inventory directories are protected from
+accidental merging; use `--force` to replace one, or `--no-archive` to skip the
+archive. Use `--help` for the complete option list. Always inspect
+`logs/sensitive-file-review.txt` and the collected network, user, and
+configuration data before committing or sharing an inventory.
 
 ## Installation from a NixOS installer
 
@@ -54,8 +116,9 @@ available in [X1-INSTALL.md](X1-INSTALL.md):
 ```
 
 Replace the disk with the whole internal device identified by `lsblk`. The
-script is destructive, displays the selected disk, and requires an explicit
-confirmation before partitioning it.
+script is destructive, displays the selected disk, requires an explicit
+confirmation before partitioning it, and pauses after hardware generation so
+the generated file can be reviewed before installation.
 
 ### 2. Choose the storage procedure
 
@@ -65,7 +128,8 @@ confirmation before partitioning it.
   clean reinstall is intended.
 - **T440s:** the inventory describes the old LUKS/LVM/ext4 installation. To
   use `.#t440s`, back up the machine and recreate its root partition as
-  encrypted Btrfs. The existing EFI and `/boot` partitions may be retained.
+  encrypted Btrfs. The existing EFI and `/boot` partitions may be retained;
+  they are the only unencrypted boot filesystems in the target layout.
 - **X1 Carbon 9th Gen:** partition the new disk with an EFI system partition
   and an encrypted Linux root partition. The root filesystem must be Btrfs.
   Do not assume the disk is `/dev/nvme0n1`; confirm it with `lsblk`.
@@ -83,12 +147,29 @@ mount /dev/mapper/cryptroot /mnt
 btrfs subvolume create /mnt/@
 btrfs subvolume create /mnt/@home
 btrfs subvolume create /mnt/@log
+btrfs subvolume create /mnt/@sync
+btrfs subvolume create /mnt/@swap
 umount /mnt
 
 mount -o subvol=@,compress=zstd /dev/mapper/cryptroot /mnt
 mkdir -p /mnt/home /mnt/var/log /mnt/boot /mnt/boot/efi
 mount -o subvol=@home,compress=zstd /dev/mapper/cryptroot /mnt/home
 mount -o subvol=@log,compress=zstd /dev/mapper/cryptroot /mnt/var/log
+mkdir -p /mnt/home/PRIMARY_USER/Shared
+mount -o subvol=@sync,compress=zstd /dev/mapper/cryptroot \
+  /mnt/home/PRIMARY_USER/Shared
+mkdir -p /mnt/swap
+mount -o subvol=@swap,compress=zstd /dev/mapper/cryptroot /mnt/swap
+btrfs filesystem mkswapfile --size 32768M --uuid clear /mnt/swap/swapfile
+btrfs inspect-internal map-swapfile -r /mnt/swap/swapfile
+```
+
+Replace `PRIMARY_USER` with `iindesa` before running the mount commands. Save
+that command's numeric output; it is the `resume_offset` value required for
+hibernation in the host's hardware configuration. Add it there as:
+
+```nix
+boot.kernelParams = [ "resume_offset=REPLACE_WITH_OFFSET" ];
 ```
 
 Mount the EFI and `/boot` partitions according to the host layout. For the
@@ -101,16 +182,42 @@ mount /dev/disk/by-uuid/07D4-D0F1 /mnt/boot/efi
 
 For the X1, use the actual EFI partition identified with `lsblk` instead. The
 P50 uses `/boot` UUID `43BE-1091` and its existing Btrfs subvolumes, so mount
-those rather than running the formatting commands above:
+those rather than running the formatting commands above. If its existing
+filesystem does not yet contain `@sync`, create that subvolume first:
 
 ```sh
 cryptsetup open /dev/disk/by-uuid/eb8d2902-ae92-4fc8-9aef-578656f5431b luksdev
+mkdir -p /mnt/btrfs-top
+mount -o subvolid=5 /dev/mapper/luksdev /mnt/btrfs-top
+btrfs subvolume create /mnt/btrfs-top/@sync
+btrfs subvolume create /mnt/btrfs-top/@swap
+umount /mnt/btrfs-top
+rmdir /mnt/btrfs-top
+
 mount -o subvol=@,compress=zstd /dev/mapper/luksdev /mnt
 mkdir -p /mnt/home /mnt/var/log /mnt/boot
 mount -o subvol=@home,compress=zstd /dev/mapper/luksdev /mnt/home
 mount -o subvol=@log,compress=zstd /dev/mapper/luksdev /mnt/var/log
+mkdir -p /mnt/home/iindesa/Shared
+mount -o subvol=@sync,compress=zstd /dev/mapper/luksdev \
+  /mnt/home/iindesa/Shared
+mkdir -p /mnt/swap
+mount -o subvol=@swap,compress=zstd /dev/mapper/luksdev /mnt/swap
+btrfs filesystem mkswapfile --size 32768M --uuid clear /mnt/swap/swapfile
+btrfs inspect-internal map-swapfile -r /mnt/swap/swapfile
 mount /dev/disk/by-uuid/43BE-1091 /mnt/boot
 ```
+
+The helper can record the offset in the host configuration automatically:
+
+```sh
+sudo ./scripts/configure-btrfs-hibernation.sh \
+  --root /mnt \
+  --config hosts/p50/configuration.nix
+```
+
+Use the T440s configuration path instead when provisioning that host. The
+`/mnt/swap` subvolume must be mounted before running the helper.
 
 ### 3. Generate hardware configuration
 
@@ -144,8 +251,7 @@ configuration, but no user password is stored in Git. After the first boot,
 log in through the local console and set it:
 
 ```sh
-passwd iindesa   # P50 or X1
-passwd rocio     # T440s
+passwd iindesa   # all hosts
 ```
 
 Then remove the installer media and reboot:
@@ -167,43 +273,52 @@ nmcli device status
 Connect Wi-Fi interactively if needed. Future configuration updates can be
 installed with `nixos-rebuild switch` from a checked-out copy of this repo.
 
-## Build or deploy
+## Validate, build, or deploy
+
+Run the checks before committing configuration or script changes. The flake
+check evaluates every host and runs Bash syntax and ShellCheck validation for
+the repository scripts:
 
 ```sh
-# Evaluate/build without switching the running machine
-nix flake check
+nix flake check --no-write-lock-file
+
+# Evaluate/build without switching the running machine.
 sudo nixos-rebuild build --flake .#p50
 sudo nixos-rebuild build --flake .#t440s
 sudo nixos-rebuild build --flake .#x1-9thgen
 
-# On the target machine
+# On the target machine.
 sudo nixos-rebuild switch --flake /path/to/iindesa-fleet#p50
 ```
 
-Set the host name in the command to match the target. The first login account
-is `iindesa` on `p50` and `x1-9thgen`, and `rocio` on `t440s`. No password or
-SSH key is stored here; set the password locally with `passwd` and add SSH
-keys separately.
+Use the host name matching the target. A build does not change the running
+system; `switch` does. The first login account is `iindesa` on every host.
+No password or SSH key is stored here; set
+the password locally with `passwd` and add SSH keys separately.
 
 ## Btrfs provisioning
 
 The T440s must be migrated from its current LUKS/LVM/ext4 layout before using
 `.#t440s`. The existing `/boot` and EFI partitions can be retained, but the
 current root partition must be recreated as LUKS containing Btrfs. Create the
-Btrfs subvolumes `@`, `@home`, and `@log`, and label the encrypted container
+Btrfs subvolumes `@`, `@home`, `@log`, and `@sync`, and label the encrypted container
 `NIXOS-LUKS` and the Btrfs filesystem `NIXOS`. Verify the device names first;
 this is intentionally not automated because formatting the wrong partition
 will destroy data. Restore the user data only after validating the new boot.
 
-The X1 template uses the same Btrfs labels and subvolume layout. Replace its
+The X1 template uses the same Btrfs labels and subvolume layout, including
+`@sync` for Syncthing data. Replace its
 placeholder hardware file with the generated hardware configuration after
 partitioning it.
 
 ## New X1 bootstrap
 
-`hosts/x1-9thgen/hardware-configuration.nix` is deliberately a safe template,
-not an invented hardware scan. Boot an installer, partition and mount the
-machine, then generate the real file:
+`hosts/x1-9thgen/hardware-configuration.nix` is deliberately a label-based
+bootstrap template, not an invented hardware scan. The recommended path is the
+[X1 installation procedure](X1-INSTALL.md), which partitions and mounts the
+selected disk, generates the real hardware file, checks the flake, and installs
+the host. Boot an installer, partition and mount the machine manually only if
+you are not using that helper, then generate the real file:
 
 ```sh
 sudo nixos-generate-config --root /mnt
@@ -218,8 +333,14 @@ For Wi-Fi, no credentials are committed. Enable NetworkManager (already done
 by the common module), then connect interactively with KDE's network applet or
 `nmcli`.
 
-## Secrets and machine-specific data
+## Secrets, Syncthing, and backups
 
-Passwords, Wi-Fi profiles, private keys, and syncthing device configuration
-must remain outside Git. If reproducible secret management is needed later,
-add sops-nix or agenix rather than embedding secrets in a Nix module.
+Passwords, Wi-Fi profiles, private keys, and Syncthing device configuration
+must remain outside Git. Agenix is included for encrypted secrets, Syncthing
+is provisioned automatically for the primary user, and Snapper provides local
+Btrfs snapshots for `/` and `/home`.
+
+Read [SECRETS.md](SECRETS.md) for the age identity workflow, Syncthing
+bootstrap notes, and the planned restic off-machine backup configuration.
+Snapshots are not a substitute for backups because they remain on the same
+disk.

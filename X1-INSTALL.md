@@ -73,10 +73,11 @@ cd /etc/nixos/fleet
 Replace `/dev/nvme0n1` with the whole internal disk identified by `lsblk`.
 The script asks for the root password during `nixos-install`, then prompts for
 the `iindesa` password and copies the checkout into the installed system at
-`/etc/nixos/fleet`. It automatically unmounts the target and closes the LUKS
-mapping when it finishes. Read the manual steps below before running it; the
-operation is destructive. `--yes` skips the confirmation only for deliberate,
-non-interactive use.
+`/etc/nixos/fleet`. After the hardware file is generated and the flake check
+passes, it pauses so you can review or edit that file before installation. It
+automatically unmounts the target and closes the LUKS mapping when it finishes.
+Read the manual steps below before running it; the operation is destructive.
+`--yes` skips all typed confirmations only for deliberate, non-interactive use.
 
 ## 3. Identify the internal disk
 
@@ -175,6 +176,8 @@ Create the subvolumes expected by the X1 configuration:
 btrfs subvolume create /mnt/@
 btrfs subvolume create /mnt/@home
 btrfs subvolume create /mnt/@log
+btrfs subvolume create /mnt/@sync
+btrfs subvolume create /mnt/@swap
 ```
 
 Unmount the temporary top-level mount:
@@ -197,6 +200,16 @@ mount -o subvol=@home,compress=zstd,ssd \
 mount -o subvol=@log,compress=zstd,ssd \
   /dev/mapper/cryptroot /mnt/var/log
 
+mkdir -p /mnt/home/iindesa/Shared
+mount -o subvol=@sync,compress=zstd,ssd \
+  /dev/mapper/cryptroot /mnt/home/iindesa/Shared
+
+mkdir -p /mnt/swap
+mount -o subvol=@swap,compress=zstd,ssd \
+  /dev/mapper/cryptroot /mnt/swap
+btrfs filesystem mkswapfile --size 32768M --uuid clear /mnt/swap/swapfile
+btrfs inspect-internal map-swapfile -r /mnt/swap/swapfile
+
 mount "$EFI_PART" /mnt/boot
 ```
 
@@ -209,7 +222,7 @@ findmnt -R /mnt
 btrfs subvolume list /mnt
 ```
 
-The output should show the `@`, `@home`, and `@log` subvolumes and mounts for `/mnt`, `/mnt/home`, `/mnt/var/log`, and `/mnt/boot`.
+The output should show the `@`, `@home`, `@log`, `@sync`, and `@swap` subvolumes and mounts for `/mnt`, `/mnt/home`, `/mnt/var/log`, `/mnt/home/iindesa/Shared`, `/mnt/swap`, and `/mnt/boot`.
 
 ## 7. Generate the real X1 hardware configuration
 
@@ -237,11 +250,22 @@ Review the generated file:
 less /etc/nixos/fleet/hosts/x1-9thgen/hardware-configuration.nix
 ```
 
+Add the Btrfs hibernation settings using the numeric offset printed by
+`btrfs inspect-internal map-swapfile -r`:
+
+```nix
+boot.resumeDevice = "/dev/disk/by-label/NIXOS";
+boot.kernelParams = [ "resume_offset=REPLACE_WITH_OFFSET" ];
+```
+
+Replace `REPLACE_WITH_OFFSET` with the actual number before installing.
 Check that it describes the actual installation, especially:
 
 - The LUKS device or UUID.
 - The Btrfs root filesystem.
-- The `@`, `@home`, and `@log` subvolumes.
+- The `@`, `@home`, `@log`, `@sync`, and `@swap` subvolumes.
+- The numeric output of `btrfs inspect-internal map-swapfile -r`; save it as the
+  `resume_offset` kernel parameter in the generated hardware configuration.
 - The EFI partition mounted at `/boot`.
 - Any generated swap configuration.
 - The required initrd modules.
@@ -324,10 +348,12 @@ nmcli device status
 The expected filesystem layout is:
 
 ```text
-@      -> /
-@home  -> /home
-@log   -> /var/log
-EFI    -> /boot
+@       -> /
+@home   -> /home
+@log    -> /var/log
+@sync   -> /home/iindesa/Shared
+@swap   -> /swap
+EFI     -> /boot
 ```
 
 Connect Wi-Fi if needed:

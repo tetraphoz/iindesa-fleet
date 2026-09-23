@@ -6,7 +6,11 @@
   # Keep unfree evaluation limited to the proprietary driver required by this
   # host's Quadro M1000M.
   nixpkgs.config.allowUnfreePredicate = pkg:
-    builtins.elem (lib.getName pkg) [ "nvidia-x11" "nvidia-settings" ];
+    builtins.elem (lib.getName pkg) [
+      "nvidia-x11"
+      "nvidia-kernel-modules"
+      "nvidia-settings"
+    ];
 
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
@@ -37,6 +41,17 @@
     fsType = "btrfs";
     options = [ "subvol=@log" "compress=zstd" "ssd" ];
   };
+  fileSystems."/home/iindesa/Shared" = {
+    device = "/dev/disk/by-uuid/e34fd222-5f3c-4b21-bcbc-5a2e276cb923";
+    fsType = "btrfs";
+    options = [ "subvol=@sync" "compress=zstd" "ssd" ];
+  };
+  fileSystems."/swap" = {
+    device = "/dev/disk/by-uuid/e34fd222-5f3c-4b21-bcbc-5a2e276cb923";
+    fsType = "btrfs";
+    options = [ "subvol=@swap" "compress=zstd" "ssd" ];
+  };
+  boot.resumeDevice = "/dev/disk/by-uuid/e34fd222-5f3c-4b21-bcbc-5a2e276cb923";
   fileSystems."/boot" = {
     device = "/dev/disk/by-uuid/43BE-1091";
     fsType = "vfat";

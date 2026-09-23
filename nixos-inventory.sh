@@ -13,8 +13,9 @@
 #
 # Usage:
 #   sudo ./nixos-inventory.sh
-#   sudo ./nixos-inventory.sh server01
 #   sudo ./nixos-inventory.sh server01 /path/to/inventories
+#   sudo ./nixos-inventory.sh --host server01 --output /path/to/inventories
+#   sudo ./nixos-inventory.sh --force server01
 #
 # Output:
 #   inventories/
@@ -40,6 +41,10 @@
 #   - NetworkManager connection secrets
 #
 
+# Most collect_shell snippets are intentionally single-quoted: they must be
+# expanded by the subshell when collected, not by this script.
+# shellcheck disable=SC2016
+
 set -u
 set -o pipefail
 
@@ -47,14 +52,104 @@ set -o pipefail
 # Configuration
 ############################################
 
-HOST_NAME="${1:-$(hostname -s)}"
-BASE_DIR="${2:-./inventories}"
+usage() {
+    cat <<'EOF'
+Usage: nixos-inventory.sh [OPTIONS] [HOST [OUTPUT_DIR]]
 
-# Sanitize hostname for filesystem use.
-HOST_NAME="$(printf '%s' "$HOST_NAME" | tr -cd '[:alnum:]_.-')"
+Collect a migration inventory from the current Linux machine.
 
-if [[ -z "$HOST_NAME" ]]; then
-    echo "ERROR: Invalid hostname."
+Arguments:
+  HOST                 Inventory name (default: short hostname)
+  OUTPUT_DIR           Parent directory (default: ./inventories)
+
+Options:
+  --host NAME          Set the inventory name
+  --output DIRECTORY   Set the parent output directory
+  --force              Replace an existing inventory directory
+  --no-archive         Do not create the .tar.gz archive
+  -h, --help           Show this help
+
+Run as root for the most complete hardware, storage, service, and user data.
+The collector intentionally excludes common secret files, but review the
+result before committing or sharing it.
+EOF
+}
+
+HOST_NAME=''
+BASE_DIR='./inventories'
+FORCE=0
+CREATE_ARCHIVE=1
+POSITIONAL=()
+
+while (($# > 0)); do
+    case "$1" in
+        --host)
+            (($# >= 2)) || { echo "ERROR: --host requires a value" >&2; exit 1; }
+            HOST_NAME=$2
+            shift 2
+            ;;
+        --output)
+            (($# >= 2)) || { echo "ERROR: --output requires a directory" >&2; exit 1; }
+            BASE_DIR=$2
+            shift 2
+            ;;
+        --force)
+            FORCE=1
+            shift
+            ;;
+        --no-archive)
+            CREATE_ARCHIVE=0
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            POSITIONAL+=("$@")
+            break
+            ;;
+        -*)
+            echo "ERROR: Unknown option: $1" >&2
+            echo "       Use --help for usage." >&2
+            exit 1
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if ((${#POSITIONAL[@]} > 2)); then
+    echo "ERROR: Too many positional arguments." >&2
+    echo "       Use --help for usage." >&2
+    exit 1
+fi
+
+if ((${#POSITIONAL[@]} >= 1)); then
+    [[ -z "$HOST_NAME" ]] || {
+        echo "ERROR: host specified both positionally and with --host." >&2
+        exit 1
+    }
+    HOST_NAME=${POSITIONAL[0]}
+fi
+if ((${#POSITIONAL[@]} == 2)); then
+    [[ "$BASE_DIR" == './inventories' ]] || {
+        echo "ERROR: output directory specified both positionally and with --output." >&2
+        exit 1
+    }
+    BASE_DIR=${POSITIONAL[1]}
+fi
+
+HOST_NAME=${HOST_NAME:-$(hostname -s)}
+
+# Host names become directory names below BASE_DIR.  Reject rather than
+# silently rewrite invalid input, especially path traversal such as '..'.
+if [[ ! "$HOST_NAME" =~ ^[[:alnum:]_.-]+$ || "$HOST_NAME" == "." || "$HOST_NAME" == ".." ]]; then
+    echo "ERROR: Invalid hostname: $HOST_NAME" >&2
+    echo "       Use only letters, digits, '.', '_' and '-'" >&2
     exit 1
 fi
 
@@ -94,7 +189,32 @@ error() {
     printf '%b[ERROR]%b %s\n' "$RED" "$RESET" "$*" >&2
 }
 
-mkdir -p \
+if [[ -L "$OUT" ]]; then
+    error "Output path must not be a symbolic link: $OUT"
+    exit 1
+fi
+if [[ -e "$OUT" && ! -d "$OUT" ]]; then
+    error "Output path exists and is not a directory: $OUT"
+    error "Move or remove it before collecting this inventory."
+    exit 1
+fi
+if [[ -d "$OUT" ]]; then
+    if ((FORCE == 0)); then
+        error "Inventory already exists: $OUT"
+        error "Use --force to replace it, or choose another host/output directory."
+        exit 1
+    fi
+    rm -rf -- "$OUT" || {
+        error "Unable to remove existing inventory: $OUT"
+        exit 1
+    }
+fi
+
+if [[ $EUID -ne 0 ]]; then
+    warn "Not running as root; some hardware, storage, service, and user data may be incomplete."
+fi
+
+if ! mkdir -p \
     "$OUT/metadata" \
     "$OUT/hardware" \
     "$OUT/storage" \
@@ -103,7 +223,10 @@ mkdir -p \
     "$OUT/services" \
     "$OUT/users" \
     "$OUT/configuration" \
-    "$OUT/logs"
+    "$OUT/logs"; then
+    error "Unable to create inventory directory: $OUT"
+    exit 1
+fi
 
 ############################################
 # Command runner
@@ -1123,6 +1246,9 @@ find "$OUT" \
 cat > "$OUT/README.md" <<EOF
 # NixOS Migration Inventory
 
+This inventory was generated by \`nixos-inventory.sh\`. It is migration input,
+not a NixOS configuration and not a backup.
+
 ## Machine
 
 - Hostname: $HOST_NAME
@@ -1188,8 +1314,9 @@ The preferred migration strategy is:
 8. Test the resulting configuration in a VM.
 9. Deploy to the physical machine.
 
-Review logs/sensitive-file-review.txt before committing the inventory
-to a Git repository.
+Review \`logs/sensitive-file-review.txt\` before committing the inventory
+to a Git repository. Re-run the collector with \`--force\` to replace an
+existing inventory, or \`--no-archive\` when an archive is not wanted.
 EOF
 
 ############################################
@@ -1210,14 +1337,23 @@ find "$OUT" \
 
 ARCHIVE="${BASE_DIR}/${HOST_NAME}.tar.gz"
 
-if command -v tar >/dev/null 2>&1; then
-    log "Creating archive..."
+if ((CREATE_ARCHIVE == 1)); then
+    if ((FORCE == 1)) && [[ -f "$ARCHIVE" ]]; then
+        rm -f -- "$ARCHIVE" || warn "Unable to remove existing archive: $ARCHIVE"
+    fi
+    if command -v tar >/dev/null 2>&1; then
+        log "Creating archive..."
 
-    tar \
-        --exclude='*/logs/script.log' \
-        -czf "$ARCHIVE" \
-        -C "$BASE_DIR" \
-        "$HOST_NAME" 2>/dev/null || true
+        if ! tar \
+            --exclude='*/logs/script.log' \
+            -czf "$ARCHIVE" \
+            -C "$BASE_DIR" \
+            "$HOST_NAME" 2>/dev/null; then
+            warn "Unable to create archive: $ARCHIVE"
+        fi
+    else
+        warn "tar is not installed; skipping archive creation."
+    fi
 fi
 
 ############################################
@@ -1237,7 +1373,7 @@ echo
 echo "Inventory:"
 echo "  $OUT"
 echo
-if [[ -f "$ARCHIVE" ]]; then
+if ((CREATE_ARCHIVE == 1)) && [[ -f "$ARCHIVE" ]]; then
     echo "Archive:"
     echo "  $ARCHIVE"
 fi

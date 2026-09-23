@@ -9,3 +9,8 @@ secrets/
 *.key
 *.pem
 *.age
+
+# Inventory directories may contain sensitive machine data. Review and add an
+# archive explicitly when an inventory is intended to be versioned.
+inventories/*/
+!inventories/README.md

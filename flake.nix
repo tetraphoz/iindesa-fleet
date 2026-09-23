@@ -3,17 +3,19 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    agenix.url = "github:ryantm/agenix";
+    agenix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { nixpkgs, ... }:
+  outputs = { nixpkgs, agenix, ... }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       mkHost = { user, modules }:
         nixpkgs.lib.nixosSystem {
           inherit system;
-          specialArgs = { primaryUser = user; };
-          modules = [ ./modules/common.nix ] ++ modules;
+          specialArgs = { inherit agenix; primaryUser = user; };
+          modules = [ agenix.nixosModules.default ./modules/common.nix ] ++ modules;
         };
     in
     {
@@ -24,7 +26,7 @@
         };
 
         t440s = mkHost {
-          user = "rocio";
+          user = "iindesa";
           modules = [ ./hosts/t440s/configuration.nix ];
         };
 
@@ -34,11 +36,15 @@
         };
       };
 
-      checks.${system}.inventory-script = pkgs.runCommand "check-nixos-inventory-script" {
+      checks.${system}.inventory-script = pkgs.runCommand "check-fleet-shell-scripts" {
         nativeBuildInputs = [ pkgs.bash pkgs.shellcheck ];
       } ''
-        bash -n ${./nixos-inventory.sh}
-        shellcheck ${./nixos-inventory.sh}
+        for script in \
+          ${./nixos-inventory.sh} \
+          ${./scripts/install-x1.sh}; do
+          bash -n "$script"
+          shellcheck "$script"
+        done
         touch $out
       '';
     };
