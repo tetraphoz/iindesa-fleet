@@ -16,7 +16,8 @@ missing or unstaged Nix files.
 Confirm the configured and physical disks before formatting:
 
 ```sh
-nix eval --raw .#nixosConfigurations.p50-install.config.disko.devices.disk.main.device
+nix --extra-experimental-features 'nix-command flakes' eval --raw \
+  '.#nixosConfigurations.p50-install.config.disko.devices.disk.main.device'
 lsblk -d -o NAME,SIZE,MODEL
 ```
 
