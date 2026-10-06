@@ -1,9 +1,10 @@
 # Secrets and encrypted state
 
 This flake includes the [agenix](https://github.com/ryantm/agenix) NixOS
-module and installs the `agenix` command on every host. No encrypted secret
-files are committed yet because the fleet does not have its age recipients or
-backup destination defined.
+module and installs the `agenix` command on every host. Backblaze B2 has been
+selected for Restic, but backups remain disabled until a private bucket,
+per-host credentials, and recovery-capable age recipients are provisioned. No
+secret files or cloud credentials have been created.
 
 ## Create an age identity
 
@@ -16,34 +17,27 @@ chmod 600 ~/.config/age/fleet-admin.txt
 age-keygen -y ~/.config/age/fleet-admin.txt
 ```
 
-The final command prints the public recipient. Use that recipient when creating
-secrets. Additional recipients can be added for each host after installation;
-use the host's SSH ed25519 public key with `agenix` only if that key is kept and
-managed securely.
+The final command prints the public recipient. Add public recipients to the
+repository's `secrets.nix` recipient map when it is established; public
+recipients may be committed, but never the private identity. Include the admin
+recipient and, once available, each host's SSH Ed25519 public-key recipient
+when encrypting that host's secrets. Keep the admin private identity
+independently recoverable and outside the fleet devices.
 
 ## Encrypt a secret
 
-Create encrypted files outside the repository first, then move the resulting
-`.age` file into `secrets/`:
+Create encrypted files outside the repository first, then place the resulting
+`.age` ciphertext under `secrets/`. Review recipients carefully. Only encrypted
+`.age` files under `secrets/` are allowed by `.gitignore`; plaintext passwords,
+private keys, Wi-Fi profiles, and Syncthing identities remain ignored and must
+never be committed. The encrypted files must be tracked with the flake so
+NixOS can build the agenix secret declarations.
 
-```sh
-agenix -i ~/.config/age/fleet-admin.txt -e secrets/restic-password.age
-```
-
-The `secrets/` directory is ignored by Git. Review recipients carefully and
-never commit an unencrypted password, private key, Wi-Fi profile, or Syncthing
-identity.
-
-A NixOS module can consume a secret like this once the file exists:
-
-```nix
-age.secrets.restic-password = {
-  file = ../secrets/restic-password.age;
-  owner = primaryUser;
-  group = "users";
-  mode = "0400";
-};
-```
+For backup secrets, encrypt each host's Restic password and B2 application-key
+environment file to **both** that host's age recipient and the administrative
+recovery recipient. Keep the admin identity offline or otherwise protected
+outside the repository, with an independent recovery copy. Host recipients are not available for an active host until its NixOS host
+key has been created.
 
 ## SSH host identities
 
@@ -90,40 +84,86 @@ by `snapper-init` on first boot.
 
 Hibernation uses a 32 GiB swapfile inside the encrypted `@swap` Btrfs
 subvolume. Its machine-specific `resume_offset` must be recorded in the host
-configuration during provisioning. The X1 installer calculates and writes it
-automatically. Manual P50 and T440s provisioning can use
-`scripts/configure-btrfs-hibernation.sh`, which runs
-`btrfs inspect-internal map-swapfile -r` and updates the host configuration.
+configuration during provisioning. The universal guarded installer calculates
+and writes the selected host's offset automatically. P50 maintenance can use
+`scripts/configure-btrfs-hibernation.sh`, which requires the root and `/swap`
+subvolume to be exact Btrfs mount points, runs
+`btrfs inspect-internal map-swapfile -r`, and updates the dedicated host
+module. For example, with the P50 filesystems mounted under `/mnt`:
 
-### TODO: cloud restic backups
-
-Restic is installed, but off-machine backups are intentionally not enabled yet.
-The preferred implementation is a cloud or S3-compatible repository, with the
-repository credentials and restic password supplied through agenix. Decide on
-the provider, bucket/endpoint, region, retention policy, and expected monthly
-cost before enabling it.
-
-A future host or common module can use an arrangement like this. Replace the
-SFTP repository with the selected cloud backend and add the provider's
-credential environment through an agenix-managed `environmentFile` if needed:
-
-```nix
-services.restic.backups.fleet = {
-  repository = "s3:https://s3.example.com/fleet-backups";
-  passwordFile = config.age.secrets.restic-password.path;
-  paths = [ "/home/${primaryUser}" ];
-  exclude = [
-    "/home/${primaryUser}/.cache"
-    "/home/${primaryUser}/.config/syncthing"
-  ];
-  timerConfig = {
-    OnCalendar = "daily";
-    Persistent = true;
-  };
-};
+```sh
+sudo ./scripts/configure-btrfs-hibernation.sh \\
+  --root /mnt \\
+  --config hosts/p50/resume-offset.nix
 ```
 
-Do not enable the example until the repository, credentials, retention policy,
-bandwidth behavior, and restore procedure have been tested. A backup is only
-useful once a restore has been verified. Keep this as a deployment TODO while
-fleet management and the cloud provider are being evaluated.
+### Backblaze B2 Restic backups
+
+`modules/restic-backup.nix` now defines the B2 workflow, but it is **disabled by
+default**. It backs up the primary user's `/home/iindesa` directory on each
+host; `/home/iindesa/Shared` is covered as part of that tree. Other accounts'
+home directories are not included. System closures, `/nix`, and system
+configuration are intentionally not backed up. Cache, Trash, Snapper snapshot
+directories, and machine-local Syncthing configuration are excluded. Restic
+encrypts repository contents before upload.
+
+Each host has a separate repository under
+`b2:<bucket>:iindesa-fleet/<hostname>`, a separate Restic password, and a
+bucket/prefix-restricted B2 application key. This limits the effect of a
+compromised host, but it means identical `Shared` contents are stored in each
+host's repository and count toward B2 storage. The current proposed retention
+is 14 daily, 8 weekly, and 12 monthly snapshots; confirm this and the expected
+storage cost before enabling. Daily backups prune to that retention. A monthly
+integrity check reads a 5% data sample. These checks do not replace a periodic
+restore test.
+
+For each host, create these encrypted files after its age recipient is
+available:
+
+- `secrets/restic/<hostname>-password.age` — a unique, strong Restic
+  repository password.
+- `secrets/restic/<hostname>-b2.env.age` — a B2 application key in systemd
+  EnvironmentFile format: `B2_ACCOUNT_ID` contains the application-key ID and
+  `B2_ACCOUNT_KEY` contains its application key (not the account master key).
+
+Restrict each B2 key to the dedicated private bucket and an exact host prefix,
+for example `iindesa-fleet/p50/`. It needs the permissions required for Restic
+backup, pruning, and checking; do not apply B2 lifecycle deletion rules or
+Object Lock until the Restic maintenance behavior has been tested. Keep an
+administrative recovery recipient on each encrypted file so a lost host does
+not make its repository password unrecoverable.
+
+After creating the bucket and all required host secrets, configure
+`fleet.backups.restic.enable = true;` and the bucket name in the common module
+(or enable individual hosts as their recipients become available). The module
+then schedules daily backups with persistent systemd timers, initializes the
+repository on first successful use, prunes old snapshots, and runs a monthly
+sample check. A failure is written to the journal and broadcast to logged-in
+terminals with `wall`.
+
+Useful host commands after activation:
+
+```sh
+sudo systemctl status restic-backups-home.timer restic-home-check.timer
+sudo journalctl -u restic-backups-home.service -u restic-home-check.service
+sudo restic-home snapshots
+sudo restic-home check
+```
+
+Test recovery by restoring a selected snapshot to a temporary directory first;
+review the files and permissions before copying anything back into a live home:
+
+```sh
+sudo restic-home restore latest --target /tmp/restic-restore-test
+```
+
+For a lost host, use the administrative age identity to decrypt that host's
+B2 environment and Restic password into protected temporary files on the
+recovery machine, then connect to
+`b2:<bucket>:iindesa-fleet/<hostname>` and restore to a temporary target. Remove
+the decrypted credential files after the recovery test. Do not restore directly
+over a live `/home` until contents and permissions have been reviewed.
+
+The bucket name, B2 keys, Restic passwords, and recipient setup are still
+pending. Do not rely on the service until a first backup has completed and a
+restore test has been verified on a separate device or clean installation.

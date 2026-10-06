@@ -1,159 +1,93 @@
 # Implementation status
 
-Last updated: 2026-09-22
+Last reviewed: 2026-10-06
 
-This file tracks active work and decisions for the `iindesa-fleet` repository.
-The longer-term cloud and infrastructure work sequence is in
-[`docs/INFRASTRUCTURE-ROADMAP.md`](docs/INFRASTRUCTURE-ROADMAP.md).
-Do not put passwords, private keys, cloud credentials, age identities, or other
-secrets here.
+This file tracks active repository work. The longer-term cloud and
+infrastructure plan is in [`docs/INFRASTRUCTURE-ROADMAP.md`](docs/INFRASTRUCTURE-ROADMAP.md).
+Never record passwords, private keys, cloud credentials, age identities, or
+other secrets here.
 
-## Repository state
+## Fleet scope
 
-- The fleet has three NixOS configurations: `p50`, `t440s`, and `x1-9thgen`.
-- `modules/common.nix` is the shared workstation configuration.
-- The primary account is `iindesa` on every host.
-- The repository is hosted at `github.com/tetraphoz/iindesa-fleet`.
-- Commit `34e35b0` (`Make shared directory writable by primary user`) was
-  pushed to `origin/main`.
-- Current local changes are staged but not yet committed or pushed:
-  - `scripts/update-x1.sh`
-  - `flake.nix`
-  - `docs/SECRETS.md`
+- Registered NixOS hosts: `p50` and `x1-9thgen`; P50 still runs Arch Linux
+  and awaits the documented migration.
+- `fleetHosts` in `flake.nix` is the single host registry; setting `diskDevice`
+  generates a matching destructive `<host>-install` output.
+- The T440s has left the fleet. Its former host module and resume offset are
+  preserved in `archive/t440s/`; its migration inventory remains under
+  `inventories/`. The archive is not included in the flake.
+- `modules/common.nix` is the shared workstation configuration; storage is
+  separated into runtime (`modules/storage.nix`) and installer
+  (`modules/disko-layout.nix`) modules.
+- The primary fleet account is `iindesa`.
+- The P50 still runs Arch Linux. Its normal NixOS output uses the fleet Disko
+  labels; `p50-install` is a full-disk reinstall, not an in-place upgrade.
 
-## Completed
+## Working-tree caution
 
-### Shared directory permissions
+The checkout contains pre-existing user changes and untracked work in addition
+to this refactor. Preserve all unrelated edits. Nothing has been committed,
+pushed, provisioned, or deployed as part of this work. Review `git status`
+and `git diff` before staging or committing.
 
-- Added a systemd oneshot service in `modules/common.nix`.
-- After local filesystems are mounted, it sets:
-  - `/home/iindesa/Shared` owner to `iindesa:users`.
-  - Directory mode to `0750`.
-- The service runs before `syncthing.service` and applies to all hosts.
-- The change was deployed to GitHub in commit `34e35b0`, but the X1 activation
-  was not completed at that time.
+Nix's Git-backed flake source excludes untracked files. Stage new Nix files
+imported by the flake before running flake evaluation; this is an index-only
+step and does not require a commit. Avoid staging unrelated work.
 
-### X1 deployment helper
+## Decisions and operational boundaries
 
-- Added `scripts/update-x1.sh`.
-- It validates the flake, builds on `x1-9thgen`, and activates there over SSH.
-- It uses the X1 as both `--build-host` and `--target-host` to avoid copying
-  unsigned locally-built store paths to a target requiring Nix signatures.
-- It requires an interactive terminal and asks for the remote sudo password.
-- The flake shell-script check includes this script.
+- Continue manual NixOS updates and firmware updates; no unattended upgrades
+  or firmware flashing.
+- Secure Boot signing remains out of scope.
+- Verify suspend, hibernate, and resume on actual hardware before changing
+  power-management settings.
+- Restic/B2 remains disabled until a private bucket, per-host encrypted
+  credentials, and independently recoverable age identities are ready.
+- Keep SSH on the private Tailscale interface. No public SSH or remote desktop.
+- Provisioning uses Disko and is destructive. Verify the target and backup,
+  read the displayed disk details, and type the exact confirmation only when
+  replacement is intentional.
 
-Run it from an interactive administration-host terminal:
+## Current work
 
-```sh
-./scripts/update-x1.sh
-```
+The storage/installer refactor and T440s retirement are represented in the
+uncommitted working tree. The X1's `resume_offset` is tied to its actual
+swapfile and must be retained for that disk; reformatting requires a new
+offset. The P50 normal configuration and `p50-install` output both target the
+fleet's Disko layout. The install output erases the selected disk; do not use
+it until an external backup exists and its restore has been tested.
 
-The X1 currently requires an interactive sudo password. A non-interactive
-attempt built the new system remotely but could not activate it.
+## Backups
 
-### Firmware updates
+The Restic module is optional and disabled by default. The proposal is a
+per-host Backblaze B2 repository, encrypted Restic password, restricted
+per-host application key, 14 daily / 8 weekly / 12 monthly retention, and a
+monthly 5% repository check. These are not operational backups until the
+bucket and secrets exist and both backup and restore have been verified.
 
-- `services.fwupd.enable = true` is already enabled in `modules/common.nix`.
-- `fwupd` is installed in the common package set.
-- On `x1-9thgen`, `fwupd.service` is enabled and active.
-- Firmware updates are intentionally manual; do not add unattended firmware
-  flashing.
-- Secure Boot remains disabled by policy. Do not implement Secure Boot signing
-  or automatic Secure Boot database updates.
+Snapper snapshots remain local recovery points, not a substitute for an
+off-machine backup. See [`docs/SECRETS.md`](docs/SECRETS.md).
 
-### Validation
+## Validation completed
 
-The following currently passes:
+- `nix flake check --no-write-lock-file` passed from a temporary copy containing
+  the full working tree. This avoids staging the existing untracked files just
+  to make Git-backed flake evaluation see them.
+- Evaluated the four outputs (`p50`, `p50-install`, `x1-9thgen`, and
+  `x1-9thgen-install`) and confirmed the active and installer configurations
+  evaluate against the shared fleet storage modules.
+- `bash -n`, ShellCheck, and `git diff --check` passed for the fleet scripts
+  and working tree.
+- The Btrfs hibernation helper passed an isolated mock test for offset update
+  and rejected an ordinary directory as an unmounted target.
+- No system toplevel build, provisioning, install, switch, commit, or push was
+  performed.
 
-```sh
-nix flake check --no-write-lock-file
-git diff --check
-```
+## Next steps
 
-## Decisions
-
-- Fleet updates remain manual while Clan and Colmena are being evaluated.
-- Syncthing's default firewall exposure is acceptable.
-- Secure Boot is out of scope; keep it disabled.
-- Power-management and hibernate behavior need to be checked on the hardware
-  before changing the configuration.
-- Syncthing device and folder configuration stays mutable and local. This is
-  preferred for flexibility despite the less reproducible setup.
-- Firmware updates remain manual.
-- Restic backups should eventually use cloud or S3-compatible storage.
-- Local notifications are sufficient initially; Zulip integration is optional
-  and not yet specified.
-
-## Open work
-
-### Commit and deploy the current staged work
-
-- [ ] Review the staged changes.
-- [ ] Commit `scripts/update-x1.sh`, `flake.nix`, and `docs/SECRETS.md`.
-- [ ] Push the commit to `origin/main`.
-- [ ] Run `./scripts/update-x1.sh` from an interactive terminal.
-- [ ] Verify on the X1:
-
-  ```sh
-  systemctl status shared-directory-permissions.service
-  stat -c '%U:%G %a %n' /home/iindesa/Shared
-  systemctl --failed --no-legend
-  ```
-
-Expected directory state:
-
-```text
-iindesa:users 750 /home/iindesa/Shared
-```
-
-### Cloud Restic backups
-
-Restic is installed, but no backup service is enabled. The skeleton is in
-`docs/SECRETS.md`; do not enable it until these choices are made:
-
-- [ ] Select a provider: Backblaze B2, Wasabi, AWS S3, Cloudflare R2, or another
-      S3-compatible service.
-- [ ] Select the bucket/endpoint and region.
-- [ ] Decide whether all of `/home/iindesa`, including `Shared`, is backed up.
-- [ ] Define daily/weekly/monthly retention limits.
-- [ ] Define bandwidth and scheduling requirements.
-- [ ] Create agenix-managed restic password and provider credential secrets.
-- [ ] Enable `services.restic.backups` in the appropriate common or host module.
-- [ ] Test a backup, prune operation, and full restore before relying on it.
-- [ ] Decide whether failures should produce local desktop notifications and/or
-      Zulip messages.
-
-The backup repository must remain off-machine. Snapper snapshots are local
-recovery only and are not a substitute for Restic.
-
-### Fleet management
-
-- [ ] Evaluate Clan and Colmena against the current flake and deployment flow.
-- [ ] Decide whether either tool becomes the supported fleet deployment path.
-- [ ] Keep the existing manual `nixos-rebuild` and X1 update script working
-      until a replacement is tested.
-
-### Power management
-
-- [ ] Check suspend, hibernate, resume, lid-close behavior, and battery use on
-      each host.
-- [ ] Confirm the configured Btrfs swapfile resume offsets work.
-- [ ] Only then decide whether to change TLP, suspend, or hibernate settings.
-
-### Notifications
-
-- [ ] Define which events need notifications: failed services, SMART warnings,
-      failed backups, firmware availability, or other events.
-- [ ] Start with local notifications unless a Zulip server, stream, bot token,
-      and secret-management approach are specified.
-- [ ] Never commit Zulip tokens or webhook URLs.
-
-## Out of scope for now
-
-- Automatic NixOS upgrades.
-- Automatic firmware installation.
-- Secure Boot enablement or signing infrastructure.
-- Declarative Syncthing pairing and folder configuration.
-- Public SSH or remote-desktop exposure.
-- Committing passwords, private keys, cloud credentials, or generated service
-  state.
+- [ ] Review the final full diff before staging or committing.
+- [ ] Build the relevant host toplevel before a deployment when a full build
+      check is wanted; no system activation is required for that validation.
+- [ ] Review backup requirements and restore procedure before provisioning
+      cloud resources or enabling Restic.
+- [ ] Commit, push, install, or deploy only when separately authorized.

@@ -4,11 +4,15 @@ result-*
 .direnv/
 .envrc
 
-# Local secrets and generated machine data
+# Keep agenix ciphertext trackable; ignore plaintext and generated machine data.
 secrets/
+!secrets/
+secrets/**
+!secrets/**/
 *.key
 *.pem
 *.age
+!secrets/**/*.age
 
 # Inventory directories may contain sensitive machine data. Review and add an
 # archive explicitly when an inventory is intended to be versioned.

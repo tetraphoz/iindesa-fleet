@@ -1,18 +1,20 @@
 # Migration inventories
 
-The compressed archives in this directory are migration inputs for the fleet
-configurations. They contain hardware and system observations, not a NixOS
-configuration.
+The compressed archives in this directory are historical migration inputs.
+They contain hardware and system observations, not NixOS configurations, and
+may contain sensitive machine details. The T440s inventory is retained only
+for the retired host's archive; it is not evidence that the machine is still
+in the active fleet.
 
-The X1 Carbon 9th Gen does not have an inventory yet. After booting that
-machine, collect one from the repository root with:
+For a new active host, collect an inventory from the repository root with:
 
 ```sh
 sudo ./nixos-inventory.sh x1-9thgen inventories
 ```
 
 The command creates both `inventories/x1-9thgen/` and its compressed archive.
-For another machine, replace the host name and output directory as needed:
+For another authorized active machine, replace the host name and output
+directory as needed:
 
 ```sh
 sudo ./nixos-inventory.sh HOST inventories

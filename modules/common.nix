@@ -1,9 +1,8 @@
 { agenix, lib, pkgs, primaryUser, ... }:
 
 {
-  # New fleet roots use encrypted Btrfs with @, @home, and @log subvolumes.
-  # Filesystem devices and LUKS mappings stay host-specific because they are
-  # discovered from each machine during installation.
+  # modules/storage.nix defines runtime mounts; modules/disko-layout.nix
+  # mirrors them for the explicitly named *-install configurations.
   #
   # The inventories show KDE Plasma on both existing work machines.  Keep the
   # desktop and the useful workstation services in one place so all hosts stay
@@ -15,24 +14,10 @@
     }
   ];
 
-  # Keep the synchronized payload separate from the regular home subvolume.
-  # The device label is shared by the fleet; each host still has its own
-  # hardware-specific root and LUKS mappings.
-  fileSystems."/home/${primaryUser}/Shared" = lib.mkDefault {
-    device = "/dev/disk/by-label/NIXOS";
-    fsType = "btrfs";
-    options = [ "subvol=@sync" "compress=zstd" "ssd" ];
-  };
-  fileSystems."/swap" = lib.mkDefault {
-    device = "/dev/disk/by-label/NIXOS";
-    fsType = "btrfs";
-    options = [ "subvol=@swap" "compress=zstd" "ssd" ];
-  };
-
-  # The persistent swapfile is inside the encrypted Btrfs filesystem. Each
-  # host's hardware module may override this with its filesystem UUID.
+  # The persistent swapfile is inside the encrypted Btrfs filesystem. The
+  # storage modules declare its mount and swap device; the resume offset is
+  # host-specific.
   boot.resumeDevice = lib.mkDefault "/dev/disk/by-label/NIXOS";
-  swapDevices = [ { device = "/swap/swapfile"; } ];
 
   system.stateVersion = "25.05";
 
@@ -143,7 +128,8 @@
   };
 
   # Snapper provides local, point-in-time recovery for the Btrfs root and home
-  # subvolumes. It is not an off-machine backup; use restic for that later.
+  # subvolumes. Off-machine home backups are configured separately and remain
+  # disabled until the B2 bucket and per-host agenix secrets are provisioned.
   services.snapper = {
     snapshotRootOnBoot = true;
     persistentTimer = true;
@@ -248,6 +234,34 @@
   programs.zsh.enable = true;
   users.defaultUserShell = pkgs.zsh;
   users.mutableUsers = true;
+  users.users = {
+    rocio = {
+      isNormalUser = true;
+      description = "Rocio";
+      extraGroups = [ "networkmanager" "audio" "video" "render" "lp" ];
+    };
+    analu = {
+      isNormalUser = true;
+      description = "Analu";
+      extraGroups = [ "networkmanager" "audio" "video" "render" "lp" ];
+    };
+    bryan = {
+      isNormalUser = true;
+      description = "Bryan";
+      extraGroups = [ "networkmanager" "audio" "video" "render" "lp" ];
+    };
+    angelica = {
+      isNormalUser = true;
+      description = "Angelica";
+      extraGroups = [ "networkmanager" "audio" "video" "render" "lp" ];
+    };
+    adrian = {
+      isNormalUser = true;
+      description = "Adrian";
+      extraGroups = [ "networkmanager" "audio" "video" "render" "lp" ];
+    };
+  };
+
   users.users.${primaryUser} = {
     isNormalUser = true;
     description = "${primaryUser} work account";
@@ -332,6 +346,9 @@
     kdePackages.plasma-browser-integration
     kdePackages.kde-gtk-config
     kdePackages.kdenlive
+    freecad
+    librecad
+    zoom-us
     firefox
     chromium
     thunderbird

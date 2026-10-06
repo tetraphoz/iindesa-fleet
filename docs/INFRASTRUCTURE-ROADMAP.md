@@ -17,21 +17,20 @@ continues to manage the NixOS hosts and local services.
 - Syncthing's current firewall exposure is acceptable.
 - Syncthing pairing and folders remain mutable and local.
 - Power-management behavior must be checked before changing its configuration.
-- Restic is installed but no remote backup job is enabled.
-- Cloud or S3-compatible storage is preferred for Restic.
+- Backblaze B2 is selected for Restic; the job remains disabled until the
+  bucket, per-host credentials, and age recovery recipients are provisioned.
 - Local notifications are sufficient initially; Zulip is optional.
 
 ## Decisions to make before provisioning
 
-- [ ] Select an object-storage provider.
-  - Default recommendation: Backblaze B2.
-  - Consider Cloudflare R2 if large or frequent restores make egress cost
-    more important than storage cost.
-  - Consider AWS S3 for compliance, lifecycle, or enterprise requirements.
-- [ ] Select the storage region and data-residency requirements.
-- [ ] Estimate the initial and one-year backup size.
-- [ ] Define Restic retention, for example daily 14, weekly 8, and monthly 12.
-- [ ] Confirm that `/home/iindesa/Shared` is included in backups.
+- [x] Select Backblaze B2 as the Restic object-storage provider.
+- [ ] Create a private bucket and select its region/data-residency requirements.
+- [ ] Estimate the initial and one-year backup size, including the per-host
+      copies of `Shared` stored in separate repositories.
+- [ ] Approve or revise the configured retention proposal: daily 14, weekly 8,
+      and monthly 12.
+- [x] Include `/home/iindesa` on each host, including `Shared`; other
+      accounts' homes and NixOS system state are excluded.
 - [ ] Decide whether to use Zulip Cloud or self-host Zulip.
   - Recommendation: Zulip Cloud unless self-hosting is a deliberate goal.
 - [ ] Select a domain and DNS provider if Zulip or other public services are
@@ -80,36 +79,45 @@ operating systems.
 Restic encrypts repository contents before upload. The storage provider should
 not receive the repository password.
 
-- [ ] Create a dedicated backup bucket.
-- [ ] Create a restricted backup application credential.
-- [ ] Keep the Restic password in an agenix secret.
-- [ ] Store provider credentials in an agenix-managed environment file or
-      another approved secret manager.
-- [ ] Define repository naming and host separation, for example one repository
-      per fleet or per host.
-- [ ] Configure `services.restic.backups` in the common NixOS module only after
-      the provider and credential design are approved.
-- [ ] Back up `/home/iindesa`, including `Shared`.
-- [ ] Exclude cache directories and mutable Syncthing configuration as
-      appropriate; document every exclusion.
-- [ ] Schedule daily backups with persistent systemd timers.
-- [ ] Configure `forget` and `prune` according to the approved retention plan.
-- [ ] Add repository checks at a lower frequency than normal backups.
+- [ ] Create a dedicated private B2 bucket and choose its region.
+- [ ] Create a bucket- and per-host-prefix-restricted B2 application key for
+      each host.
+- [ ] Create a unique Restic password per host; encrypt each password and B2
+      environment file to both the host recipient and an administrative
+      recovery recipient.
+- [x] Define one repository per host under `iindesa-fleet/<hostname>`; this
+      isolates host credentials but stores replicated `Shared` data separately.
+- [x] Add an optional `services.restic.backups.home` module, disabled until the
+      bucket and encrypted host secrets are ready.
+- [x] Back up `/home/iindesa`, including `Shared`; other account homes and
+      system state are intentionally excluded.
+- [x] Exclude cache, Trash, Snapper snapshots, and machine-local Syncthing
+      configuration; see `docs/SECRETS.md`.
+- [x] Configure daily persistent timers, automatic repository initialization,
+      and proposed `forget`/`prune` retention of 14 daily, 8 weekly, and 12
+      monthly snapshots.
+- [x] Configure a monthly 5% repository data check and a local failure alert;
+      these activate only with the backup module.
+- [ ] Confirm retention and estimated B2 cost before enabling.
+- [ ] Enable the job only after bucket, secrets, and recovery identity are
+      configured; verify the first backup.
 - [ ] Test a file restore on one host.
 - [ ] Test a larger home-directory restore in a temporary location.
 - [ ] Test recovery with a newly provisioned host.
 - [ ] Record the restore procedure in the repository.
 
-Do not enable object-lock retention until Restic maintenance and pruning have
-been tested. Immutable retention can prevent expected deletion of old Restic
-pack files. If ransomware resistance is required, use a separately designed
-append-only or immutable repository with separate maintenance credentials.
+Do not enable B2 Object Lock or lifecycle deletion rules until Restic
+maintenance and pruning have been tested. Immutable retention can prevent
+expected deletion of old Restic pack files. If ransomware resistance is
+required, use a separately designed append-only or immutable repository with
+separate maintenance credentials.
 
 ## Phase 3: backup and host notifications
 
 Start with the smallest useful notification system.
 
-- [ ] Add local notifications for failed Restic jobs.
+- [x] Configure a local `wall`/journal alert for failed Restic jobs; it is
+      dormant while Restic remains disabled.
 - [ ] Add a success heartbeat to Healthchecks.io or an equivalent service if a
       hosted heartbeat is acceptable.
 - [ ] Alert on missed backup schedules rather than sending every successful
@@ -165,14 +173,14 @@ Keep the existing manual deployment flow until a replacement is proven.
 
 - [ ] Evaluate Clan for secrets, inventory, and host deployment needs.
 - [ ] Evaluate Colmena for simple multi-host deployment and rollback.
-- [ ] Compare both against the current flake and `scripts/update-x1.sh`.
+- [ ] Compare both against the current flake and `scripts/deploy-host.sh`.
 - [ ] Test the selected tool against `x1-9thgen` first.
 - [ ] Verify remote sudo, build-host behavior, rollback, and hardware-file
       handling.
 - [ ] Test deployment when the administration host and target have different
       Nix versions.
 - [ ] Document the selected workflow.
-- [ ] Deploy to P50 and T440s only after the X1 workflow is reliable.
+- [ ] Deploy to the P50 only after the X1 workflow is reliable.
 
 The update helper should remain available as a recovery path even after a
 fleet manager is selected.
