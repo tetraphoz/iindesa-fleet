@@ -54,8 +54,18 @@ git add hosts/p50/resume-offset.nix
 sudo nixos-install --flake "$PWD#p50" --no-root-password
 ```
 
-Before rebooting, set a password for `iindesa` and each other normal account
-you intend to use. Do not share passwords in chat:
+`nixos-install` unmounts the target after installing the bootloader. Remount
+it without formatting before setting passwords:
+
+```sh
+sudo nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
+  --mode mount --flake "$PWD#p50-install"
+findmnt -R /mnt
+test -e /mnt/etc/NIXOS && test -e /mnt/nix/var/nix/profiles/system
+```
+
+If those checks pass, set a password for `iindesa` and each other normal
+account you intend to use. Do not share passwords in chat:
 
 ```sh
 sudo nixos-enter --root /mnt -c 'passwd iindesa'
