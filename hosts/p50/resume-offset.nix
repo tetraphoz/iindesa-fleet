@@ -1,6 +1,6 @@
 { ... }:
 
 {
-  # Set by the installation workflow after the Btrfs swapfile is created.
-  boot.kernelParams = [ ];
+  # Captured from /proc/cmdline on the installed P50; tied to its current swapfile.
+  boot.kernelParams = [ "resume_offset=533760" ];
 }

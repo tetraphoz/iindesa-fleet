@@ -1,9 +1,15 @@
-{ ... }:
+{ lib, ... }:
 
 {
   imports = [ ./resume-offset.nix ];
 
   networking.hostName = "p50";
+
+  # The P50 admin key has been installed; disable password-based SSH auth.
+  services.openssh.settings = {
+    PasswordAuthentication = lib.mkForce false;
+    KbdInteractiveAuthentication = lib.mkForce false;
+  };
 
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;

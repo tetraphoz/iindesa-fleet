@@ -84,6 +84,23 @@ findmnt -t btrfs,vfat
 nmcli device status
 ```
 
+P50 disables SSH password and keyboard-interactive authentication. Restore
+`~/.ssh/authorized_keys` from backup or, on the local console as `iindesa`, add
+the admin **public** key (not the private key):
+
+```sh
+install -d -m 0700 ~/.ssh
+cat /path/to/admin-key.pub >> ~/.ssh/authorized_keys
+chmod 0600 ~/.ssh/authorized_keys
+```
+
+`ssh-copy-id` by password will not work. From the admin machine, verify
+key-only access before leaving the console:
+
+```sh
+ssh -o BatchMode=yes -o PasswordAuthentication=no iindesa@p50 true
+```
+
 Restore user data from the verified external backup; do not blindly copy the
 old Arch `/etc` over NixOS. Enable Restic only after the restored data is in
 place and the B2 credentials and recovery keys are ready.
