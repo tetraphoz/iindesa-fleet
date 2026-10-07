@@ -51,8 +51,10 @@ Do not apply cloud resources until the plan and state handling are reviewed.
 - [ ] Enable state locking where supported.
 - [ ] Add `fmt`, `validate`, and plan checks to CI.
 - [ ] Keep cloud credentials outside Git and outside committed `.tfvars` files.
-- [ ] Decide whether agenix, a password manager, or a cloud secret manager
-      will provide provider credentials.
+- [ ] Establish a central secrets workflow for fleet and infrastructure,
+      including inventory, access control, recovery, rotation, and audit.
+- [ ] Decide how OpenTofu credentials fit into it: agenix, a password manager,
+      or a cloud secret manager.
 - [ ] Document the bootstrap procedure for the remote state backend.
 
 Suggested layout:
@@ -102,6 +104,9 @@ not receive the repository password.
 - [ ] Enable the job only after bucket, secrets, and recovery identity are
       configured; verify the first backup.
 - [ ] Test a file restore on one host.
+- [ ] Once Syncthing is idle and Restic backup/restore is verified, move the
+      existing `@sync` mount from `/home/iindesa/Shared` to `/Shared`; update
+      storage, Snapper, Syncthing, and Restic together without reformatting.
 - [ ] Test a larger home-directory restore in a temporary location.
 - [ ] Test recovery with a newly provisioned host.
 - [ ] Record the restore procedure in the repository.

@@ -15,6 +15,23 @@ Replace `HOST` with an active registry name. Newly created Nix files imported
 by the flake must be added to Git's index before evaluation; inspect status
 before staging. Builds do not activate the system.
 
+## Shared folder path migration (planned)
+
+The `@sync` Btrfs subvolume is currently mounted at
+`/home/iindesa/Shared`. The target is a top-level `/Shared` mount. Do not move
+it while Syncthing is still syncing. First finish the fleet sync, then enable
+Restic at the current path, complete a backup, and verify a restore.
+
+Migration should reuse the existing `@sync` subvolume; it is a mount-path
+change, not a disk reformat or data copy. During one coordinated maintenance
+window, pause Syncthing on peers and update the runtime and Disko mountpoints,
+Snapper path, directory permissions, tmpfiles, and Restic paths/exclusions
+together. Keep `/home/iindesa/Shared` as a compatibility symlink to `/Shared`
+while Syncthing or user workflows still reference the old path. Migrate and
+verify one host at a time; resume syncing only after the shared folder is
+visible and its contents are intact. Remove the symlink only after no consumer
+uses it.
+
 ## Remote access and deployment
 
 SSH is restricted to the private Tailscale interface. After NixOS is installed,

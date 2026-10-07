@@ -57,10 +57,11 @@ system configuration.
 ## Syncthing
 
 Syncthing is already provisioned by `modules/common.nix`: the service runs as
-the primary user, uses `/home/<user>/Shared` as its data directory, creates
-`Shared/Desktop` and `Shared/Documents`, and opens its standard firewall
-ports. Its identity
-keys and `config.xml` are generated locally and must remain outside Git.
+the primary user, currently uses `/home/<user>/Shared` as its data directory,
+creates `Shared/Desktop` and `Shared/Documents`, and opens its standard
+firewall ports. Its identity keys and `config.xml` are generated locally and
+must remain outside Git. A move to `/Shared` is planned only after current
+sync activity and a verified Restic backup/restore; see `docs/OPERATIONS.md`.
 
 The first boot still requires pairing devices and selecting folders. That is
 intentional: device IDs and folder topology are machine-specific. Agenix can
@@ -99,10 +100,12 @@ sudo ./scripts/configure-btrfs-hibernation.sh \\
 
 ### Backblaze B2 Restic backups
 
-`modules/restic-backup.nix` now defines the B2 workflow, but it is **disabled by
-default**. It backs up the primary user's `/home/iindesa` directory on each
-host; `/home/iindesa/Shared` is covered as part of that tree. Other accounts'
-home directories are not included. System closures, `/nix`, and system
+`modules/restic-backup.nix` defines the B2 workflow, but it is **disabled by
+default**. In the current layout it backs up the primary user's
+`/home/iindesa` directory on each host, including `/home/iindesa/Shared`. Other
+accounts' home directories are not included. After the planned move to `/Shared`,
+the backup paths and snapshot exclusions must be updated together so Restic
+continues to cover shared data. System closures, `/nix`, and system
 configuration are intentionally not backed up. Cache, Trash, Snapper snapshot
 directories, and machine-local Syncthing configuration are excluded. Restic
 encrypts repository contents before upload.

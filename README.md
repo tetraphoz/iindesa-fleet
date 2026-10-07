@@ -37,10 +37,12 @@ hardware and storage overrides, then evaluate and build the outputs. See
 
 The NixOS target layout uses Btrfs subvolumes `@`, `@home`, `@log`, `@sync`,
 and `@swap`.
-The shared `@sync` subvolume is mounted at `/home/iindesa/Shared`; the persistent
-swapfile lives in `@swap`. The normal P50 output uses the same fleet labels as
-its `p50-install` output. Do not apply it to the existing Arch installation;
-`p50-install` erases and recreates the selected disk.
+The shared `@sync` subvolume is currently mounted at `/home/iindesa/Shared`;
+the persistent swapfile lives in `@swap`. A move to `/Shared` is planned only
+after Syncthing completes and a Restic backup/restore is verified; see
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md). The normal P50 output uses the same
+fleet labels as its `p50-install` output. Do not apply it to the existing Arch
+installation; `p50-install` erases and recreates the selected disk.
 
 ## Validate
 
