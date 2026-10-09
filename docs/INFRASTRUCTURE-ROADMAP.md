@@ -27,8 +27,8 @@ continues to manage the NixOS hosts and local services.
 - [ ] Create a private bucket and select its region/data-residency requirements.
 - [ ] Estimate the initial and one-year backup size, including the per-host
       copies of `Shared` stored in separate repositories.
-- [ ] Approve or revise the configured retention proposal: daily 14, weekly 8,
-      and monthly 12.
+- [x] Set the backup policy to four runs per day; keep the latest four, six
+      daily, eight weekly, and twelve monthly snapshots.
 - [x] Include `/home/iindesa` on each host, including `Shared`; other
       accounts' homes and NixOS system state are excluded.
 - [ ] Decide whether to use Zulip Cloud or self-host Zulip.
@@ -95,12 +95,12 @@ not receive the repository password.
       system state are intentionally excluded.
 - [x] Exclude cache, Trash, Snapper snapshots, and machine-local Syncthing
       configuration; see `docs/SECRETS.md`.
-- [x] Configure daily persistent timers, automatic repository initialization,
-      and proposed `forget`/`prune` retention of 14 daily, 8 weekly, and 12
-      monthly snapshots.
+- [x] Configure persistent six-hour timers, automatic repository
+      initialization, and `forget`/`prune` retention of the latest four, six
+      daily, eight weekly, and twelve monthly snapshots.
 - [x] Configure a monthly 5% repository data check and a local failure alert;
       these activate only with the backup module.
-- [ ] Confirm retention and estimated B2 cost before enabling.
+- [ ] Confirm the estimated B2 cost before enabling.
 - [ ] Enable the job only after bucket, secrets, and recovery identity are
       configured; verify the first backup.
 - [ ] Test a file restore on one host.

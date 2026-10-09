@@ -31,10 +31,16 @@ in
       description = "Object-name prefix under which per-host Restic repositories are stored.";
     };
 
+    keepLast = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 4;
+      description = "Number of most recent snapshots to retain; at a six-hour schedule this is about one day.";
+    };
+
     keepDaily = lib.mkOption {
       type = lib.types.ints.positive;
-      default = 14;
-      description = "Number of daily Restic snapshots to retain per host.";
+      default = 6;
+      description = "Number of daily Restic snapshots to retain per host (one per day, not a backup interval).";
     };
 
     keepWeekly = lib.mkOption {
@@ -92,11 +98,12 @@ in
         "${home}/Shared/.snapshots"
       ];
       timerConfig = {
-        OnCalendar = "daily";
+        OnCalendar = "*-*-* 00/6:00:00";
         Persistent = true;
-        RandomizedDelaySec = "2h";
+        RandomizedDelaySec = "30m";
       };
       pruneOpts = [
+        "--keep-last ${toString cfg.keepLast}"
         "--keep-daily ${toString cfg.keepDaily}"
         "--keep-weekly ${toString cfg.keepWeekly}"
         "--keep-monthly ${toString cfg.keepMonthly}"

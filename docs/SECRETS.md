@@ -114,11 +114,15 @@ Each host has a separate repository under
 `b2:<bucket>:iindesa-fleet/<hostname>`, a separate Restic password, and a
 bucket/prefix-restricted B2 application key. This limits the effect of a
 compromised host, but it means identical `Shared` contents are stored in each
-host's repository and count toward B2 storage. The current proposed retention
-is 14 daily, 8 weekly, and 12 monthly snapshots; confirm this and the expected
-storage cost before enabling. Daily backups prune to that retention. A monthly
-integrity check reads a 5% data sample. These checks do not replace a periodic
-restore test.
+host's repository and count toward B2 storage. The planned schedule is every
+six hours with up to 30 minutes of jitter. Retention keeps the latest four
+snapshots (about one day), one snapshot per day for six days, eight weekly,
+and twelve monthly. `keep-daily = 6` is a retention window, not the backup
+frequency. The laptop must be awake and online for each run; the persistent
+timer catches up once after downtime rather than creating snapshots for every
+missed interval. Confirm expected B2 storage cost before enabling. A monthly
+integrity check reads a 5% data sample; it does not replace a periodic restore
+test.
 
 For each host, create these encrypted files after its age recipient is
 available:
@@ -139,9 +143,9 @@ not make its repository password unrecoverable.
 After creating the bucket and all required host secrets, configure
 `fleet.backups.restic.enable = true;` and the bucket name in the common module
 (or enable individual hosts as their recipients become available). The module
-then schedules daily backups with persistent systemd timers, initializes the
-repository on first successful use, prunes old snapshots, and runs a monthly
-sample check. A failure is written to the journal and broadcast to logged-in
+then schedules backups every six hours with persistent systemd timers,
+initializes the repository on first successful use, prunes old snapshots, and
+runs a monthly sample check. A failure is written to the journal and broadcast to logged-in
 terminals with `wall`.
 
 Useful host commands after activation:
