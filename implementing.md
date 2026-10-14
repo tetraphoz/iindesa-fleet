@@ -41,8 +41,9 @@ step and does not require a commit. Avoid staging unrelated work.
 - Secure Boot signing remains out of scope.
 - Verify suspend, hibernate, and resume on actual hardware before changing
   power-management settings.
-- Restic/B2 remains disabled until a private bucket, per-host encrypted
-  credentials, and independently recoverable age identities are ready.
+- X1 Restic/B2 uses the `x1-9thgen` bucket and a dedicated age identity. The
+  user reports the first backup completed; a restore test was explicitly
+  waived, so recovery remains unverified. P50 remains disabled.
 - Keep SSH on the private Tailscale interface. No public SSH or remote desktop.
 - Provisioning uses Disko and is destructive. Verify the target and backup,
   read the displayed disk details, and type the exact confirmation only when
@@ -55,15 +56,22 @@ uncommitted working tree. The X1's `resume_offset` is tied to its actual
 swapfile and must be retained for that disk; reformatting requires a new
 offset. The P50 normal configuration and `p50-install` output both target the
 fleet's Disko layout. The install output erases the selected disk; do not use
-it until an external backup exists and its restore has been tested.
+it until an external backup exists and its restore has been tested. X1's
+module-based OpenClaw configuration uses the pinned upstream NixOS module,
+OpenAI ChatGPT/Codex OAuth, and a loopback-only gateway. The reusable
+`enroll-openclaw-openai` command is included for interactive OAuth enrollment;
+the configuration is build-validated but still awaits deployment and sign-in.
 
 ## Backups
 
-The Restic module is optional and disabled by default. The proposal is a
-per-host Backblaze B2 repository, encrypted Restic password, restricted
-per-host application key, 14 daily / 8 weekly / 12 monthly retention, and a
-monthly 5% repository check. These are not operational backups until the
-bucket and secrets exist and both backup and restore have been verified.
+The Restic module is optional and disabled by default; X1 opts in to the
+`x1-9thgen` B2 bucket with encrypted per-host credentials. Its application key
+is bucket-restricted but has no object-prefix restriction. The configured
+policy keeps four recent, six daily, eight weekly, and twelve monthly
+snapshots, with a monthly 5% repository check. The user reports the first X1
+backup completed and waived a restore test; it is not recovery-verified. Future
+hosts still need a successful first backup and restore test before their backups
+are treated as recovery-ready.
 
 Snapper snapshots remain local recovery points, not a substitute for an
 off-machine backup. See [`docs/SECRETS.md`](docs/SECRETS.md).
@@ -88,6 +96,9 @@ off-machine backup. See [`docs/SECRETS.md`](docs/SECRETS.md).
 - [ ] Review the final full diff before staging or committing.
 - [ ] Build the relevant host toplevel before a deployment when a full build
       check is wanted; no system activation is required for that validation.
-- [ ] Review backup requirements and restore procedure before provisioning
-      cloud resources or enabling Restic.
+- [ ] Consider a later X1 Restic restore test; do not call the backup
+      recovery-verified until it succeeds. Review the restore procedure before
+      enabling Restic on additional hosts.
+- [ ] Deploy X1 OpenClaw and complete the interactive OpenAI subscription
+      sign-in only when the target host and timing are confirmed.
 - [ ] Commit, push, install, or deploy only when separately authorized.

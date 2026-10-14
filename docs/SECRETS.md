@@ -1,10 +1,16 @@
 # Secrets and encrypted state
 
 This flake includes the [agenix](https://github.com/ryantm/agenix) NixOS
-module and installs the `agenix` command on every host. Backblaze B2 has been
-selected for Restic, but backups remain disabled until a private bucket,
-per-host credentials, and recovery-capable age recipients are provisioned. No
-secret files or cloud credentials have been created.
+module and installs the `agenix` command on every host. Backblaze B2 is the
+Restic target. X1 uses the `x1-9thgen` bucket and dedicated age identity
+`/var/lib/agenix/x1-host.txt`. Its Restic password and B2 credentials are
+encrypted under `secrets/restic/`; the OpenClaw gateway token is encrypted
+under `secrets/openclaw/`. The initial agenix activation failed, but the
+corrected identity allowed Restic to initialize its repository; the user
+reports that the first backup completed. A restore test was explicitly waived,
+so recovery has not been verified. The X1 B2 key is restricted to its bucket
+but has no object-prefix restriction. P50 remains disabled; do not describe the
+X1 backup as recovery-verified until a restore test succeeds.
 
 ## Create an age identity
 
@@ -19,9 +25,10 @@ age-keygen -y ~/.config/age/fleet-admin.txt
 
 The final command prints the public recipient. Add public recipients to the
 repository's `secrets.nix` recipient map when it is established; public
-recipients may be committed, but never the private identity. Include the admin
-recipient and, once available, each host's SSH Ed25519 public-key recipient
-when encrypting that host's secrets. Keep the admin private identity
+recipients may be committed, but never the private identity. Encrypt each
+host's secrets to the admin recipient and the recipient of that host's
+configured agenix identity. X1 uses the dedicated identity documented below;
+other hosts may use their SSH Ed25519 host key. Keep the admin private identity
 independently recoverable and outside the fleet devices.
 
 ## Encrypt a secret
@@ -36,23 +43,56 @@ NixOS can build the agenix secret declarations.
 For backup secrets, encrypt each host's Restic password and B2 application-key
 environment file to **both** that host's age recipient and the administrative
 recovery recipient. Keep the admin identity offline or otherwise protected
-outside the repository, with an independent recovery copy. Host recipients are not available for an active host until its NixOS host
-key has been created.
+outside the repository, with an independent recovery copy. A host recipient
+is usable only when the corresponding private identity is present at the path
+configured for agenix on that host.
 
-## SSH host identities
+## Host age identities
 
 Every host generates a unique Ed25519 SSH host key on first boot through
-`sshd-keygen.service`. This does not enable the SSH server. Inspect the public
-host key with:
+`sshd-keygen.service`. This does not enable the SSH server. Inspect it with:
 
 ```sh
 sudo cat /etc/ssh/ssh_host_ed25519_key.pub
 sudo systemctl status sshd-keygen.service
 ```
 
-These are host identity keys, not user login keys. User private keys should be
-created and protected by the user rather than generated automatically in the
-system configuration.
+X1 uses a separate age identity at `/var/lib/agenix/x1-host.txt`, selected by
+`age.identityPaths` in its host configuration. Keep that file root-owned with
+mode `0400`; never copy it into the repository or chat. Its public recipient
+may be shared and used to encrypt X1 secrets. The admin recovery recipient
+allows recovery without that host identity. Other hosts may use the default
+SSH Ed25519 host-key identity. User login keys are separate and should be
+created and protected by the user.
+
+## OpenClaw gateway
+
+X1 uses the pinned `nix-openclaw` package and its exported NixOS
+`openclaw-gateway` module. The service runs as `iindesa`, stores runtime state
+under `/home/iindesa/.openclaw`, and binds to loopback. Its gateway token is
+provided at runtime through the age-encrypted systemd environment file
+`secrets/openclaw/x1-gateway.env.age`; the Nix-managed config contains only an
+environment SecretRef, not the token value. OpenAI ChatGPT/Codex subscription
+auth is selected (OAuth provider `openai`), with `openai/gpt-6-astra` as the
+declarative default subject to the account's model catalog. The OAuth profile
+will live in the OpenClaw runtime state and is included in the encrypted X1
+Restic backup. No messaging channel is configured. The updated module-based
+configuration is not deployed. After deployment, run the installed
+enrollment command from an interactive terminal as `iindesa`:
+
+```sh
+enroll-openclaw-openai
+```
+
+Use `enroll-openclaw-openai --device-code` if the browser callback is
+unavailable. The script uses the Nix-managed config and OpenClaw state, reads
+the age-decrypted gateway environment file without printing it, and does not
+modify the declared model config or use an API key. It lists the saved OpenAI
+auth profiles and models visible to the signed-in account. Astra is not enabled
+for every account. The script is also available at
+`scripts/enroll-openclaw-openai.sh` for reuse on other hosts; set its documented
+environment overrides if a host uses different config, state, or secret-file
+paths.
 
 ## Syncthing
 
@@ -111,21 +151,23 @@ directories, and machine-local Syncthing configuration are excluded. Restic
 encrypts repository contents before upload.
 
 Each host has a separate repository under
-`b2:<bucket>:iindesa-fleet/<hostname>`, a separate Restic password, and a
-bucket/prefix-restricted B2 application key. This limits the effect of a
-compromised host, but it means identical `Shared` contents are stored in each
-host's repository and count toward B2 storage. The planned schedule is every
+`b2:<bucket>:iindesa-fleet/<hostname>` and a separate Restic password. The X1
+uses the dedicated `x1-9thgen` bucket and a bucket-restricted B2 application
+key; that key does not have an object-prefix restriction. Keep buckets
+host-specific if using bucket-only keys; for a shared bucket, restrict each
+key to its exact host prefix. Identical `Shared` contents stored in separate
+host repositories count separately toward B2 storage. The schedule is every
 six hours with up to 30 minutes of jitter. Retention keeps the latest four
 snapshots (about one day), one snapshot per day for six days, eight weekly,
 and twelve monthly. `keep-daily = 6` is a retention window, not the backup
 frequency. The laptop must be awake and online for each run; the persistent
 timer catches up once after downtime rather than creating snapshots for every
-missed interval. Confirm expected B2 storage cost before enabling. A monthly
-integrity check reads a 5% data sample; it does not replace a periodic restore
-test.
+missed interval. Review expected B2 storage cost, bucket privacy, and region;
+these were requested but are not confirmed here. A monthly integrity check
+reads a 5% data sample; it does not replace a periodic restore test.
 
-For each host, create these encrypted files after its age recipient is
-available:
+The X1's encrypted files are present. For each additional host, create these
+after its age recipient is available:
 
 - `secrets/restic/<hostname>-password.age` — a unique, strong Restic
   repository password.
@@ -133,19 +175,19 @@ available:
   EnvironmentFile format: `B2_ACCOUNT_ID` contains the application-key ID and
   `B2_ACCOUNT_KEY` contains its application key (not the account master key).
 
-Restrict each B2 key to the dedicated private bucket and an exact host prefix,
-for example `iindesa-fleet/p50/`. It needs the permissions required for Restic
-backup, pruning, and checking; do not apply B2 lifecycle deletion rules or
-Object Lock until the Restic maintenance behavior has been tested. Keep an
-administrative recovery recipient on each encrypted file so a lost host does
-not make its repository password unrecoverable.
+Restrict each B2 key to its dedicated private bucket and, where a bucket is
+shared, an exact host prefix such as `iindesa-fleet/p50/`. The X1 key is
+currently bucket-only. Keys need the permissions required for Restic backup,
+pruning, and checking; do not apply B2 lifecycle deletion rules or Object Lock
+until Restic maintenance has been tested. Keep an administrative recovery
+recipient on each encrypted file so a lost host does not make its repository
+password unrecoverable.
 
-After creating the bucket and all required host secrets, configure
-`fleet.backups.restic.enable = true;` and the bucket name in the common module
-(or enable individual hosts as their recipients become available). The module
-then schedules backups every six hours with persistent systemd timers,
-initializes the repository on first successful use, prunes old snapshots, and
-runs a monthly sample check. A failure is written to the journal and broadcast to logged-in
+The X1 host config opts into `fleet.backups.restic` with bucket name
+`x1-9thgen`; other hosts remain disabled. Once activated, the module schedules
+backups every six hours with persistent systemd timers, initializes the
+repository on first successful use, prunes old snapshots, and runs a monthly
+sample check. A failure is written to the journal and broadcast to logged-in
 terminals with `wall`.
 
 Useful host commands after activation:
@@ -171,6 +213,10 @@ recovery machine, then connect to
 the decrypted credential files after the recovery test. Do not restore directly
 over a live `/home` until contents and permissions have been reviewed.
 
-The bucket name, B2 keys, Restic passwords, and recipient setup are still
-pending. Do not rely on the service until a first backup has completed and a
-restore test has been verified on a separate device or clean installation.
+The X1 Restic repository is initialized and the user reports that the first
+backup completed. The user waived a restore test; recovery remains
+unverified, and the backup must not be described as recovery-ready until a
+restore succeeds. B2 privacy, region, and expected-cost review remain
+unconfirmed. Other hosts still need their own buckets or an explicitly
+shared-bucket design and per-host credentials. To verify recovery later, test
+on a separate device or clean installation before restoring over a live home.

@@ -13,9 +13,11 @@
     nixos-anywhere.inputs.nixpkgs.follows = "nixpkgs";
     nixos-anywhere.inputs.nixos-stable.follows = "nixpkgs";
     nixos-anywhere.inputs.disko.follows = "disko";
+
+    nix-openclaw.url = "github:openclaw/nix-openclaw/v2026.9.5";
   };
 
-  outputs = { nixpkgs, agenix, disko, nixos-anywhere, ... }:
+  outputs = { nixpkgs, agenix, disko, nixos-anywhere, nix-openclaw, ... }:
     let
       system = "x86_64-linux";
       lib = nixpkgs.lib;
@@ -39,7 +41,7 @@
       mkHost = host: lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit agenix;
+          inherit agenix nix-openclaw;
           primaryUser = host.primaryUser;
         };
         modules = [
@@ -54,7 +56,7 @@
       mkInstallHost = host: lib.nixosSystem {
         inherit system;
         specialArgs = {
-          inherit agenix;
+          inherit agenix nix-openclaw;
           diskDevice = host.diskDevice;
           primaryUser = host.primaryUser;
         };
@@ -87,7 +89,8 @@
         for script in \
           ${./nixos-inventory.sh} \
           ${./scripts/install-host.sh} \
-          ${./scripts/deploy-host.sh}; do
+          ${./scripts/deploy-host.sh} \
+          ${./scripts/enroll-openclaw-openai.sh}; do
           bash -n "$script"
           shellcheck "$script"
         done
