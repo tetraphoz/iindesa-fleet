@@ -31,7 +31,7 @@ in
 
   # Explicitly permit this pinned OpenClaw release despite Nixpkgs' warning
   # about prompt-injection risk. Review this exception when updating OpenClaw.
-  nixpkgs.config.permittedInsecurePackages = [ "openclaw-2026.9.5" ];
+  nixpkgs.config.permittedInsecurePackages = [ "openclaw-2026.10.4" ];
 
   environment.systemPackages = [ openclawPackage openclawEnrollmentScript ];
 

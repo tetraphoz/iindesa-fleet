@@ -67,18 +67,33 @@ created and protected by the user.
 
 ## OpenClaw gateway
 
-X1 uses the pinned `nix-openclaw` package and its exported NixOS
-`openclaw-gateway` module. The service runs as `iindesa`, stores runtime state
-under `/home/iindesa/.openclaw`, and binds to loopback. Its gateway token is
-provided at runtime through the age-encrypted systemd environment file
+X1 uses `nix-openclaw`'s exported NixOS `openclaw-gateway` module. On
+2026-10-16, the system was switched from v2026.9.5 to v2026.10.4 (commit
+`08732c0d9fbfc34e7c285cdbac8130bacaaad9db`). The new package's config validates,
+but its first startup rejected the existing main agent database at schema 21
+and requested a session-identity migration. `OPENCLAW_NIX_MODE=1` prevents
+`doctor --fix` from running against the Nix-managed config. As session history
+was disposable, the gateway was stopped and the old `openclaw-agent.sqlite*`
+files moved to a private backup under `/home/iindesa/.openclaw/backups/`. The
+gateway was restarted on 2026-10-16 and created a fresh agent database; a
+follow-up check showed it active with no restarts. The service runs as
+`iindesa`, stores runtime state under
+`/home/iindesa/.openclaw`, and binds to loopback. Its gateway token is provided
+at runtime through the age-encrypted systemd environment file
 `secrets/openclaw/x1-gateway.env.age`; the Nix-managed config contains only an
 environment SecretRef, not the token value. OpenAI ChatGPT/Codex subscription
-auth is selected (OAuth provider `openai`), with `openai/gpt-6-astra` as the
-declarative default subject to the account's model catalog. The OAuth profile
-will live in the OpenClaw runtime state and is included in the encrypted X1
-Restic backup. No messaging channel is configured. The updated module-based
-configuration is not deployed. After deployment, run the installed
-enrollment command from an interactive terminal as `iindesa`:
+auth is enrolled (OAuth provider `openai`), with `openai/gpt-6-astra` as the
+Nix-managed primary. No explicit `agents.defaults.subagents.model` is set. The
+OAuth profile lives in OpenClaw runtime state under the configured
+home-directory Restic backup scope; the first backup was reported complete,
+but recovery remains
+unverified until a restore test succeeds. No messaging channel is configured.
+The X1 host explicitly permits this package despite Nixpkgs' prompt-injection
+risk warning; keep the gateway loopback-only and review the exception when
+updating OpenClaw.
+
+To enroll or re-enroll OpenAI OAuth, run the installed command from an
+interactive terminal as `iindesa`:
 
 ```sh
 enroll-openclaw-openai
@@ -93,6 +108,53 @@ for every account. The script is also available at
 `scripts/enroll-openclaw-openai.sh` for reuse on other hosts; set its documented
 environment overrides if a host uses different config, state, or secret-file
 paths.
+
+### Resetting an incompatible agent database
+
+Use this only when session history is intentionally disposable. Prefer a
+supported migration or restore when sessions must be preserved. If startup
+reports an incompatible `openclaw-agent.sqlite` schema and recommends
+`doctor --fix`, note that `OPENCLAW_NIX_MODE=1` protects the Nix-managed config
+and blocks that repair command. Do not bypass the guard against
+`/etc/openclaw/openclaw.json`.
+
+With the gateway stopped, run the following as `iindesa`. It moves the agent
+database and related SQLite files (including any WAL/SHM sidecars) aside; it
+does not delete them. The next gateway start creates a fresh database. Keep the
+backup private and outside Git.
+
+```sh
+sudo systemctl stop openclaw-gateway.service
+systemctl is-active openclaw-gateway.service  # expect: inactive
+
+state="$HOME/.openclaw"
+agent="$state/agents/main/agent"
+test -f "$agent/openclaw-agent.sqlite" || exit 1
+umask 077
+mkdir -p "$state/backups"
+backup="$state/backups/agent-db-fresh-start-$(date +%Y%m%d-%H%M%S)"
+mkdir -m 0700 "$backup"
+for file in "$agent"/openclaw-agent.sqlite*; do
+  [ -e "$file" ] || continue
+  mv -- "$file" "$backup/"
+done
+ls -l "$backup"
+
+sudo systemctl start openclaw-gateway.service
+systemctl status openclaw-gateway.service --no-pager
+sudo journalctl -u openclaw-gateway.service -n 80 --no-pager
+```
+
+Check that the service stays active and the schema-version error is gone before
+considering the reset complete. Old browser session IDs will no longer resolve;
+open a new session in the Control UI. A `token_mismatch` message is separate from
+the database reset: update the Control UI's saved token using the current
+Dashboard settings, without sharing the token. This intentionally abandons data
+in the archived agent database. Only files matching `openclaw-agent.sqlite*`
+are moved; the procedure does not intentionally change the Nix config, gateway
+environment file, or other state files. Verify login and session behavior after
+startup. Do not restore the archived database over a newly created one without
+a deliberate recovery plan.
 
 ## Syncthing
 

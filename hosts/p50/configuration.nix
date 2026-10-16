@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ config, lib, ... }:
 
 {
   imports = [ ./resume-offset.nix ];
@@ -22,11 +22,33 @@
     "sd_mod"
   ];
   hardware.nvidia = {
-    # The inventory identifies a Quadro M1000M (Maxwell).  Keep the
-    # proprietary driver: this GPU is not supported by the open kernel module.
+    # The Quadro M1000M (Maxwell) needs the proprietary legacy 580 branch;
+    # newer NVIDIA branches no longer support this GPU.
+    package = config.boot.kernelPackages.nvidiaPackages.legacy_580;
     modesetting.enable = true;
     open = false;
     powerManagement.enable = true;
   };
+  # BIOS hybrid mode exposes the Intel iGPU for the internal panel. Keep
+  # NVIDIA offloaded for applications that explicitly need the discrete GPU.
+  hardware.nvidia.prime = {
+    intelBusId = "PCI:0@0:2:0";
+    nvidiaBusId = "PCI:1@0:0:0";
+    offload = {
+      enable = true;
+      enableOffloadCmd = true;
+    };
+  };
+
   services.xserver.videoDrivers = [ "nvidia" ];
+
+  hardware.printers.ensurePrinters = [
+    {
+      name = "HP-LaserJet-Pro-MFP-M127fn";
+      description = "HP LaserJet Pro MFP M127fn";
+      deviceUri = "ipp://192.168.1.75:631/ipp/print";
+      model = "everywhere";
+    }
+  ];
+  hardware.printers.ensureDefaultPrinter = "HP-LaserJet-Pro-MFP-M127fn";
 }

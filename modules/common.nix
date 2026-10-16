@@ -349,11 +349,11 @@
     freecad
     librecad
     zoom-us
-    firefox
     chromium
     thunderbird
     libreoffice
     keepassxc
+    bitwarden-desktop
     mpv
     gimp
     pdfarranger
@@ -365,6 +365,22 @@
     networkmanagerapplet
     wayland-utils
   ];
+
+  # Install the official Bitwarden extension from the managed browser stores.
+  # The self-hosted server URL must be selected in each client before signing in.
+  programs.firefox = {
+    enable = true;
+    policies.ExtensionSettings = {
+      "{446900e4-71c2-419f-a6a7-df9c091e268b}" = {
+        installation_mode = "force_installed";
+        install_url = "https://addons.mozilla.org/firefox/downloads/latest/bitwarden-password-manager/latest.xpi";
+      };
+    };
+  };
+  programs.chromium = {
+    enable = true;
+    extensions = [ "nngceckbapebfimnlniiiahkandclblb" ];
+  };
 
   environment.sessionVariables = {
     NIXOS_OZONE_WL = "1";

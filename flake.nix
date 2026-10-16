@@ -14,7 +14,7 @@
     nixos-anywhere.inputs.nixos-stable.follows = "nixpkgs";
     nixos-anywhere.inputs.disko.follows = "disko";
 
-    nix-openclaw.url = "github:openclaw/nix-openclaw/v2026.9.5";
+    nix-openclaw.url = "github:openclaw/nix-openclaw/v2026.10.4";
   };
 
   outputs = { nixpkgs, agenix, disko, nixos-anywhere, nix-openclaw, ... }:

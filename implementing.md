@@ -1,16 +1,17 @@
 # Implementation status
 
-Last reviewed: 2026-10-06
+Last reviewed: 2026-10-17
 
-This file tracks active repository work. The longer-term cloud and
-infrastructure plan is in [`docs/INFRASTRUCTURE-ROADMAP.md`](docs/INFRASTRUCTURE-ROADMAP.md).
-Never record passwords, private keys, cloud credentials, age identities, or
-other secrets here.
+This file tracks active workstation-fleet work. The fleet-specific backup,
+notification, and management plan is in
+[`docs/INFRASTRUCTURE-ROADMAP.md`](docs/INFRASTRUCTURE-ROADMAP.md). Public VPS
+resources and hosted applications are managed separately in the `iindesa-infra`
+project, not in this flake. Never record passwords, private keys, cloud
+credentials, age identities, or other plaintext secrets here.
 
 ## Fleet scope
 
-- Registered NixOS hosts: `p50` and `x1-9thgen`; P50 still runs Arch Linux
-  and awaits the documented migration.
+- Registered NixOS hosts: `p50` and `x1-9thgen`.
 - `fleetHosts` in `flake.nix` is the single host registry; setting `diskDevice`
   generates a matching destructive `<host>-install` output.
 - The T440s has left the fleet. Its former host module and resume offset are
@@ -20,19 +21,20 @@ other secrets here.
   separated into runtime (`modules/storage.nix`) and installer
   (`modules/disko-layout.nix`) modules.
 - The primary fleet account is `iindesa`.
-- The P50 still runs Arch Linux. Its normal NixOS output uses the fleet Disko
-  labels; `p50-install` is a full-disk reinstall, not an in-place upgrade.
+- P50 runs NixOS 26.05. Its normal output is for routine rebuilds;
+  `p50-install` is a destructive full-disk reinstall, not an in-place upgrade.
 
 ## Working-tree caution
 
-The checkout contains pre-existing user changes and untracked work in addition
-to this refactor. Preserve all unrelated edits. Nothing has been committed,
-pushed, provisioned, or deployed as part of this work. Review `git status`
-and `git diff` before staging or committing.
+Preserve unrelated local edits and review `git status` and `git diff` before
+staging. The X1 Restic/OpenClaw setup and enrollment script are committed and
+pushed in `55f39a5`. Live checks on 2026-10-17 confirmed that OpenClaw is
+deployed, authenticated, and active on X1; no Nix-managed configuration or
+service deployment was changed during those checks.
 
-Nix's Git-backed flake source excludes untracked files. Stage new Nix files
-imported by the flake before running flake evaluation; this is an index-only
-step and does not require a commit. Avoid staging unrelated work.
+Git-backed flakes exclude untracked files. Stage any new files referenced by
+the flake before evaluating it, including files embedded with `builtins.readFile`.
+This is an index-only step; avoid staging unrelated work.
 
 ## Decisions and operational boundaries
 
@@ -51,16 +53,34 @@ step and does not require a commit. Avoid staging unrelated work.
 
 ## Current work
 
-The storage/installer refactor and T440s retirement are represented in the
-uncommitted working tree. The X1's `resume_offset` is tied to its actual
-swapfile and must be retained for that disk; reformatting requires a new
-offset. The P50 normal configuration and `p50-install` output both target the
-fleet's Disko layout. The install output erases the selected disk; do not use
-it until an external backup exists and its restore has been tested. X1's
-module-based OpenClaw configuration uses the pinned upstream NixOS module,
-OpenAI ChatGPT/Codex OAuth, and a loopback-only gateway. The reusable
-`enroll-openclaw-openai` command is included for interactive OAuth enrollment;
-the configuration is build-validated but still awaits deployment and sign-in.
+The P50 normal configuration and `p50-install` output target the fleet's
+Disko layout; the latter erases the selected disk and is not a routine update
+path. Keep each host's machine-specific `resume_offset` with its swapfile and
+recalculate it after reformatting.
+
+X1 is now configured with the tagged `nix-openclaw` v2026.10.4 release
+(commit `08732c0d9fbfc34e7c285cdbac8130bacaaad9db`), packaging OpenClaw
+2026.10.4. The X1 system toplevel built locally, and the generated config
+passed `openclaw config validate`. The Nix-managed primary is
+`openai/gpt-6-astra`; no explicit subagent model is configured.
+
+After activation on 2026-10-16, OpenClaw 2026.10.4 refused to start because
+`/home/iindesa/.openclaw/agents/main/agent/openclaw-agent.sqlite` had schema 21
+and required a session-identity migration. Nix mode blocked `doctor --fix`;
+no repair was applied. Since session history is disposable, the gateway was
+stopped and the four `openclaw-agent.sqlite*` files were moved to the private
+backup `/home/iindesa/.openclaw/backups/agent-db-fresh-start-20261016-144310/`.
+Only those database files were moved; no config, environment file, or other
+OpenClaw files were moved. After the manual start at 14:47 on 2026-10-16, the
+fresh database was created (692224 bytes), and a follow-up check showed the
+service active with `NRestarts=0`. WebSocket requests and Codex account-usage
+checks succeeded. Old session IDs now return unavailable, as expected; one
+Control UI connection also reported a token mismatch, while another connected
+successfully. See the reset and UI follow-up notes in
+[`docs/SECRETS.md`](docs/SECRETS.md).
+
+Review compatible systemd sandboxing while retaining the gateway's required
+provider network access.
 
 ## Backups
 
@@ -78,27 +98,30 @@ off-machine backup. See [`docs/SECRETS.md`](docs/SECRETS.md).
 
 ## Validation completed
 
-- `nix flake check --no-write-lock-file` passed from a temporary copy containing
-  the full working tree. This avoids staging the existing untracked files just
-  to make Git-backed flake evaluation see them.
-- Evaluated the four outputs (`p50`, `p50-install`, `x1-9thgen`, and
-  `x1-9thgen-install`) and confirmed the active and installer configurations
-  evaluate against the shared fleet storage modules.
-- `bash -n`, ShellCheck, and `git diff --check` passed for the fleet scripts
-  and working tree.
+- `nix flake check --no-write-lock-file` passed, including Bash syntax and
+  ShellCheck for the fleet scripts.
+- Built the X1 system toplevel without activating it; the generated OpenClaw
+  configuration passed `openclaw config validate`.
+- The enrollment script passed `bash -n`, ShellCheck, and a mock OAuth CLI-flow
+  test; that mock did not perform a real sign-in. A later live check confirmed
+  the OpenAI auth profile is available on X1.
 - The Btrfs hibernation helper passed an isolated mock test for offset update
   and rejected an ordinary directory as an unmounted target.
-- No system toplevel build, provisioning, install, switch, commit, or push was
-  performed.
+- The enrollment work itself did not provision or deploy OpenClaw; X1 was
+  switched to the validated v2026.10.4 system afterward. After archiving the
+  incompatible agent database, the fresh gateway remained active in a follow-up
+  check. Restic was already active. Commit `55f39a5` was pushed to `origin/main`.
 
 ## Next steps
 
-- [ ] Review the final full diff before staging or committing.
-- [ ] Build the relevant host toplevel before a deployment when a full build
-      check is wanted; no system activation is required for that validation.
+- [ ] Refresh the Control UI after the database reset; if `token_mismatch`
+      persists, update its saved token using the current gateway token without
+      sharing the token in logs or chat.
+- [ ] Review X1's B2 privacy, region, and expected-cost settings.
 - [ ] Consider a later X1 Restic restore test; do not call the backup
-      recovery-verified until it succeeds. Review the restore procedure before
-      enabling Restic on additional hosts.
-- [ ] Deploy X1 OpenClaw and complete the interactive OpenAI subscription
-      sign-in only when the target host and timing are confirmed.
-- [ ] Commit, push, install, or deploy only when separately authorized.
+      recovery-verified until it succeeds. Require a restore test before treating
+      backups on additional hosts as recovery-ready.
+- [ ] Review compatible OpenClaw systemd sandboxing and the pinned package's
+      prompt-injection risk exception before a future upgrade.
+- [ ] Keep the planned `/Shared` migration gated on Syncthing readiness and a
+      separately verified backup/restore.
